@@ -3,3 +3,4 @@ config.backup.json
 state.json
 *.log
 *.log.*
+sheet-cache.json

@@ -95,13 +95,23 @@ function Get-Config {
             $cfg | Add-Member -NotePropertyName $k -NotePropertyValue $defaults[$k]
         }
     }
+    # Google Sheet mode: the sheet owns the target list and may override the
+    # tunable settings above. LINE credentials always stay in config.json.
+    $sheetMode = Test-SheetMode $cfg
+    if ($sheetMode) { Merge-SheetConfig -Cfg $cfg -Defaults $defaults }
+    $cfg | Add-Member -NotePropertyName sheetMode -NotePropertyValue $sheetMode -Force
+
     $script:LogMaxBytes = [int]$cfg.logMaxMB * 1MB
     $script:LogKeep     = [int]$cfg.logKeep
 
     # Accept both shapes: a `targets` array, or a single top-level url/watch
     # pair (the original one-product config stays valid).
     $targets = @()
-    if ($cfg.PSObject.Properties['targets'] -and $cfg.targets) {
+    if ($sheetMode) {
+        # An empty sheet is a legitimate state (everything paused or deleted).
+        $targets = @($cfg.targets | Where-Object { $_ })
+    }
+    elseif ($cfg.PSObject.Properties['targets'] -and $cfg.targets) {
         $targets = @($cfg.targets)
     }
     elseif ($cfg.PSObject.Properties['url'] -and $cfg.url) {
@@ -155,7 +165,13 @@ function Save-Config {
         [string]$Path = (Join-Path $script:ProjectRoot 'config.json')
     )
 
-    $out = $Cfg | Select-Object -Property * -ExcludeProperty resolvedTargets
+    if ($Cfg.PSObject.Properties['sheetMode'] -and $Cfg.sheetMode) {
+        # The targets and settings in $Cfg came from the sheet; writing them
+        # back would freeze a copy into config.json. Use Add-/Remove-Target.
+        throw 'Save-Config is not used in Google Sheet mode'
+    }
+
+    $out = $Cfg | Select-Object -Property * -ExcludeProperty resolvedTargets, sheetMode
     foreach ($t in @($out.targets)) {
         if (-not $t) { continue }
         # 'id' is derived, and an inferred country should not be frozen into the
@@ -169,6 +185,167 @@ function Save-Config {
     $tmp = "$Path.tmp"
     $out | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tmp -Encoding utf8
     Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+
+function Add-Target {
+    # Append a target (or, in sheet mode, add/update the sheet row).
+    param(
+        [Parameter(Mandatory)]$Cfg,
+        [Parameter(Mandatory)]$Entry,
+        [string]$Path = (Join-Path $script:ProjectRoot 'config.json')
+    )
+    if ($Cfg.sheetMode) {
+        Invoke-SheetApi -Cfg $Cfg -Action add -Params @{
+            url   = $Entry.url
+            label = $Entry.label
+            watch = (@($Entry.watch) -join ', ')
+        } | Out-Null
+        return
+    }
+    if (-not $Cfg.PSObject.Properties['targets'] -or -not $Cfg.targets) {
+        $Cfg | Add-Member -NotePropertyName targets -NotePropertyValue @() -Force
+    }
+    $Cfg.targets = @(@($Cfg.targets) + $Entry)
+    Save-Config -Cfg $Cfg -Path $Path
+}
+
+function Remove-Target {
+    param(
+        [Parameter(Mandatory)]$Cfg,
+        [Parameter(Mandatory)][string]$Url,
+        [string]$Path = (Join-Path $script:ProjectRoot 'config.json')
+    )
+    if ($Cfg.sheetMode) {
+        Invoke-SheetApi -Cfg $Cfg -Action remove -Params @{ url = $Url } | Out-Null
+        return
+    }
+    $Cfg.targets = @(@($Cfg.targets) | Where-Object { ($_.url -split '[?#]')[0] -ne $Url })
+    Save-Config -Cfg $Cfg -Path $Path
+}
+
+# ----------------------------------------------------------- google sheet ----
+# The sheet is served by the Apps Script in google-sheet/Code.gs. Its last good
+# response is cached so a Google hiccup does not stop the monitor.
+$script:SheetCacheFile = Join-Path $PSScriptRoot 'sheet-cache.json'
+
+# Settings the sheet may override. webhookPort and the log policy are left
+# out on purpose: changing them needs a restart, so they live in config.json.
+$script:SheetSettingKeys = @(
+    'intervalSeconds', 'cooldownMinutes', 'notifyOnFirstRun', 'notifyOnSoldOut',
+    'notifyOnError', 'requestTimeoutSec', 'maxRetries', 'politeDelayMs', 'logEveryOption'
+)
+
+function Test-SheetMode {
+    param($Cfg)
+    return [bool]($Cfg.PSObject.Properties['sheet'] -and $Cfg.sheet -and
+        $Cfg.sheet.PSObject.Properties['url'] -and $Cfg.sheet.url -and
+        $Cfg.sheet.url -notlike 'YOUR_*')
+}
+
+function ConvertTo-SheetBool {
+    # Sheet cells arrive as real booleans from checkboxes, but people also type
+    # TRUE / 是 / 1 by hand.
+    param($Value, [bool]$Default)
+    if ($Value -is [bool]) { return $Value }
+    $s = ([string]$Value).Trim().ToLowerInvariant()
+    if (-not $s) { return $Default }
+    if ($s -in 'true', '1', 'yes', 'y', 'v', '是', '開', 'on', '✓', '✔') { return $true }
+    if ($s -in 'false', '0', 'no', 'n', '否', '關', 'off') { return $false }
+    return $Default
+}
+
+function Invoke-SheetApi {
+    param(
+        [Parameter(Mandatory)]$Cfg,
+        [string]$Action = 'read',
+        [hashtable]$Params = @{}
+    )
+    if (-not $Cfg.sheet.key -or $Cfg.sheet.key -like 'YOUR_*') {
+        throw 'config.json 的 sheet.key 還沒填（要和 Apps Script 裡的 SECRET 相同）'
+    }
+    $query = [ordered]@{ key = $Cfg.sheet.key; action = $Action }
+    foreach ($k in $Params.Keys) { $query[$k] = $Params[$k] }
+    $qs = ($query.GetEnumerator() | ForEach-Object {
+            '{0}={1}' -f [uri]::EscapeDataString($_.Key), [uri]::EscapeDataString([string]$_.Value)
+        }) -join '&'
+    $sep = if ($Cfg.sheet.url.Contains('?')) { '&' } else { '?' }
+    $timeout = if ($Cfg.PSObject.Properties['requestTimeoutSec']) { [int]$Cfg.requestTimeoutSec } else { 30 }
+
+    # Apps Script answers with a redirect to googleusercontent.com, which
+    # Invoke-RestMethod follows on its own.
+    $resp = Invoke-RestMethod -Uri "$($Cfg.sheet.url)$sep$qs" -TimeoutSec $timeout
+    if ($resp -is [string]) {
+        # An HTML page here means a Google sign-in wall: the web app was not
+        # deployed with access set to "Anyone".
+        throw 'Google 試算表回傳的不是 JSON。請確認 Apps Script 部署成「網頁應用程式」，存取權設為「任何人」。'
+    }
+    if (-not $resp.ok) { throw "Google 試算表回報錯誤：$($resp.error)" }
+    return $resp
+}
+
+function Merge-SheetConfig {
+    param(
+        [Parameter(Mandatory)]$Cfg,
+        [Parameter(Mandatory)]$Defaults
+    )
+
+    $data = $null
+    try {
+        $data = Invoke-SheetApi -Cfg $Cfg -Action read
+        try {
+            $data | ConvertTo-Json -Depth 8 |
+                Set-Content -LiteralPath $script:SheetCacheFile -Encoding utf8
+        }
+        catch { }
+    }
+    catch {
+        if (-not (Test-Path $script:SheetCacheFile)) {
+            throw "讀不到 Google 試算表，也沒有之前的快取：$($_.Exception.Message)"
+        }
+        Write-Log "Google 試算表讀取失敗，先用上次的快取：$($_.Exception.Message)" WARN
+        $data = Get-Content -LiteralPath $script:SheetCacheFile -Raw -Encoding utf8 | ConvertFrom-Json
+    }
+
+    $list = [System.Collections.Generic.List[object]]::new()
+    foreach ($row in @($data.targets)) {
+        if (-not $row -or -not $row.url) { continue }
+        if ($row.PSObject.Properties['enabled'] -and
+            -not (ConvertTo-SheetBool $row.enabled $true)) { continue }
+
+        $watch = @(([string]$row.watch) -split '[,，、]' |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if (-not $watch.Count) { $watch = @('*') }
+
+        $t = [pscustomobject]@{
+            label = ([string]$row.label).Trim()
+            url   = (([string]$row.url).Trim() -split '[?#]')[0]
+            watch = $watch
+        }
+        if ($row.PSObject.Properties['country'] -and $row.country) {
+            $t | Add-Member -NotePropertyName country -NotePropertyValue ([string]$row.country).Trim()
+        }
+        $list.Add($t)
+    }
+    $Cfg | Add-Member -NotePropertyName targets -NotePropertyValue $list.ToArray() -Force
+
+    if ($data.PSObject.Properties['settings'] -and $data.settings) {
+        foreach ($p in $data.settings.PSObject.Properties) {
+            if ($p.Name -notin $script:SheetSettingKeys) {
+                Write-Log "試算表 settings 裡的「$($p.Name)」不是可調整的參數，已忽略" WARN
+                continue
+            }
+            $default = $Defaults[$p.Name]
+            try {
+                $value = if ($default -is [bool]) { ConvertTo-SheetBool $p.Value $Cfg.($p.Name) }
+                         else { [int]$p.Value }
+            }
+            catch {
+                Write-Log "試算表 settings 的「$($p.Name)」值「$($p.Value)」不是數字，已忽略" WARN
+                continue
+            }
+            $Cfg | Add-Member -NotePropertyName $p.Name -NotePropertyValue $value -Force
+        }
+    }
 }
 
 # ------------------------------------------------------------------ state ----

@@ -68,8 +68,10 @@ pwsh -File .\weverse-restock.ps1 -Status
 | `lib.ps1` | 兩者共用的抓取／設定／LINE 邏輯 |
 | `install-task.ps1` | 註冊／移除工作排程 |
 | `install-tunnel.ps1` | 安裝 cloudflared 並開隧道 |
+| `google-sheet/Code.gs` | 貼到 Google 試算表的 Apps Script，讓試算表管理監測清單（選用） |
 | `config.json` | 你的設定（含 token，不要外流） |
 | `state.json` | 上次看到的庫存與通知時間（自動產生） |
+| `sheet-cache.json` | 試算表模式下最後一次成功讀到的內容，Google 連不上時備用（自動產生） |
 | `restock.log` / `webhook.log` | 執行紀錄，自動輪替（見下方「log 會不會太大」） |
 
 ---
@@ -129,6 +131,7 @@ setup-task.cmd -Uninstall          # 移除
 | `targets[].label` | 通知訊息裡顯示的名稱 |
 | `targets[].watch` | 要監測的選項名稱陣列，或 `["*"]` |
 | `targets[].country` | 選填。地區限定商品的國家代碼（如 `"JP"`）。留空＝從網址幣別推斷 |
+| `sheet.url` / `sheet.key` | 選填。填了就改用 Google 試算表管理 `targets` 與部分參數，見下一節 |
 | `line.channelAccessToken` | Messaging API 分頁的 long-lived token（很長，170+ 字元） |
 | `line.channelSecret` | Basic settings 分頁的 Channel secret（32 字元）。**只有 webhook 需要** |
 | `line.to` | 收通知的 User ID。同時也是 webhook 的寄件者白名單 |
@@ -142,6 +145,58 @@ setup-task.cmd -Uninstall          # 移除
 | `logMaxMB` | 單一 log 檔上限（MB），預設 1。超過就輪替 |
 | `logKeep` | 保留幾個舊檔（`.1`～`.N`），預設 3。總上限＝`logMaxMB × (logKeep+1)` |
 | `logEveryOption` | 預設 `false`。設 `true` 會每輪記錄每個選項（除錯用，很吵） |
+
+## 用 Google 試算表管理監測清單（選用）
+
+不想改 JSON 的話，可以把監測清單和參數放在 Google 試算表，在手機或電腦上直接改。**每次檢查都會重新讀取，改完不用重開任何東西。**
+
+- `config.json` 填了 `sheet.url` 後，`targets` 一律以試算表為準（`config.json` 裡的 `targets` 會被忽略）。
+- LINE 的「加」「刪」指令會直接寫進試算表。
+- LINE token / secret **不會**放到試算表，仍然只在本機的 `config.json`。
+- Google 暫時連不上時，會用上次成功讀到的內容（`sheet-cache.json`）繼續監測，並在 log 留 `WARN`。
+
+### 試算表長這樣
+
+**`targets` 工作表**（第一列是標題，欄位順序可以調；標題也可以寫成 `啟用`／`名稱`／`網址`／`選項`／`國家`）
+
+| enabled | label | url | watch | country | note |
+|---|---|---|---|---|---|
+| ☑ | Face Plush Keyring | https://shop.weverse.io/zh-tw/shop/KRW/artists/7/sales/42095 | O.C.L, TAMTAM | | |
+| ☐ | ACRYLIC STAND | https://shop.weverse.io/en/shop/KRW/artists/7/sales/41000 | * | | 先暫停 |
+
+- `enabled`：取消勾選就暫停監測，不用刪列。
+- `watch`：多個選項用逗號分隔（`,`、`，`、`、` 都可以），留空或 `*` = 全部選項。
+- `country`、`label`、`note` 可留空。
+
+**`settings` 工作表**（`key` / `value` 兩欄，沒列出的就用 `config.json` 或預設值）
+
+可調整：`cooldownMinutes`、`notifyOnFirstRun`、`notifyOnSoldOut`、`notifyOnError`、`intervalSeconds`、`requestTimeoutSec`、`maxRetries`、`politeDelayMs`、`logEveryOption`。
+`webhookPort`、`logMaxMB`、`logKeep` 要重開程式才生效，所以只能在 `config.json` 設定。
+
+> 排程模式（`setup-task.cmd`）多久跑一次是工作排程器決定的，要改請重跑 `setup-task.cmd -IntervalMinutes N`；試算表的 `intervalSeconds` 只影響 `-Loop` 模式。
+
+### 設定步驟
+
+1. 開一個新的 Google 試算表。
+2. 選單「擴充功能 → Apps Script」，把預設內容全部刪掉，貼上 `google-sheet/Code.gs` 的內容。
+3. 把最上面的 `SECRET` 改成一串夠長的亂數（例如在 PowerShell 跑 `[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')`），存檔。
+4. 函式選單選 `setup` → 執行，第一次會要求授權（選自己的帳號 → 進階 → 前往專案 → 允許）。回到試算表會看到 `targets` 和 `settings` 兩個工作表。
+5. 「部署 → 新增部署作業」→ 類型選「網頁應用程式」：
+   - 執行身分：**我**
+   - 存取權：**任何人**
+   - 按「部署」，複製網址（`https://script.google.com/macros/s/…/exec`）。
+6. 在 `config.json` 加上：
+   ```json
+   "sheet": {
+     "url": "https://script.google.com/macros/s/…/exec",
+     "key": "跟第 3 步一樣的 SECRET"
+   }
+   ```
+7. 跑 `restock.cmd -Status` 確認讀得到試算表裡的商品。
+
+**之後改了 `Code.gs`**，要「部署 → 管理部署作業 → 編輯 → 版本選『新版本』」，網址才會用到新程式碼（網址不變）。只改試算表內容不用重新部署。
+
+**安全性**：「任何人」存取的意思是知道網址的人都能呼叫，但沒有正確的 `key` 只會拿到錯誤訊息。`key` 跟 LINE token 一樣不要外流；萬一外流，改 `SECRET` 再部署新版本即可。
 
 ---
 

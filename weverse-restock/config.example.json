@@ -12,6 +12,11 @@
     }
   ],
 
+  "sheet": {
+    "url": "YOUR_APPS_SCRIPT_WEB_APP_URL",
+    "key": "YOUR_SHEET_SECRET"
+  },
+
   "line": {
     "channelAccessToken": "YOUR_CHANNEL_ACCESS_TOKEN",
     "channelSecret": "YOUR_CHANNEL_SECRET",

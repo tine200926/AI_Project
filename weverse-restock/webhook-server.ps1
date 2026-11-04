@@ -137,18 +137,14 @@ function Invoke-AddCommand {
     $label = if ($saleName) { $saleName } else { $url }
     $entry = [pscustomobject]@{ label = $label; url = $url; watch = $watch }
 
-    if (-not $Cfg.PSObject.Properties['targets'] -or -not $Cfg.targets) {
-        $Cfg | Add-Member -NotePropertyName targets -NotePropertyValue @() -Force
-    }
-    $Cfg.targets = @(@($Cfg.targets) + $entry)
-    Save-Config -Cfg $Cfg -Path $Config
+    Add-Target -Cfg $Cfg -Entry $entry -Path $Config
 
     $statusLines = foreach ($n in $resolved.Keys) {
         "・$n`t$(if ($options[$n]) { '售完' } else { '有貨' })"
     }
     Write-Log "added target: $label ($url) watch=$($watch -join ',')"
     return (@(
-        '✅ 已加入監測'
+        '✅ 已加入監測' + $(if ($Cfg.sheetMode) { '（已寫入 Google 試算表）' } else { '' })
         ''
         "■ $label"
         "・監測選項：$(@($watch) -join ', ')"
@@ -172,8 +168,7 @@ function Invoke-DeleteCommand {
     }
     $match = @($match)[0]
 
-    $Cfg.targets = @(@($Cfg.targets) | Where-Object { ($_.url -split '[?#]')[0] -ne $match.url })
-    Save-Config -Cfg $Cfg -Path $Config
+    Remove-Target -Cfg $Cfg -Url $match.url -Path $Config
 
     # Drop that product's saved stock state so a re-add starts clean.
     $state = Get-State
