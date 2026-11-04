@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>補貨通知・設定</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { background: var(--surface); }
+    .page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 20px; }
+    h1 { font-size: 20px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    section.card { padding: 16px; }
+    label.field { display: grid; gap: 4px; }
+    label.field > span { font-size: 12px; color: var(--muted); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .check { display: flex; gap: 8px; align-items: flex-start; }
+    .check input { margin-top: 4px; }
+    #probeResult { margin-top: 12px; display: grid; gap: 10px; }
+    .optlist { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .optlist label { display: inline-flex; gap: 6px; align-items: center; }
+    .target { display: grid; gap: 8px; }
+    .target + .target { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+    .target.paused .tlabel { opacity: .6; }
+    .tlabel { font-weight: 600; }
+    .opts { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+    #log { max-height: 260px; overflow-y: auto; font: 12px/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; background: var(--surface); border-radius: 8px; padding: 8px 10px; }
+    .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+    @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="row">
+      <h1 class="grow">補貨通知</h1>
+      <button id="testNotify">測試通知</button>
+      <button id="checkNow" class="primary">立即檢查</button>
+    </div>
+
+    <section class="card">
+      <h2>新增商品</h2>
+      <form id="probeForm" class="row wrap">
+        <input id="url" type="url" class="grow" required placeholder="貼上 Weverse Shop 商品頁網址，例如 https://shop.weverse.io/zh-tw/shop/KRW/artists/7/sales/42095">
+        <input id="country" type="text" maxlength="2" style="width:90px" placeholder="國家(選填)" title="地區限定商品才需要，例如 JP。留空會從網址的幣別判斷">
+        <button type="submit" class="primary" id="probeBtn">讀取選項</button>
+      </form>
+      <div id="probeResult"></div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="margin-bottom:10px">
+        <h2 class="grow" style="margin:0">監測清單</h2>
+        <span id="lastRun" class="muted small"></span>
+      </div>
+      <div id="targets"></div>
+    </section>
+
+    <section class="card">
+      <h2>設定</h2>
+      <form id="settingsForm" style="display:grid;gap:12px">
+        <div class="grid2">
+          <label class="field"><span>檢查間隔（分鐘，最少 1）</span><input type="number" name="intervalMinutes" min="1" max="1440"></label>
+          <label class="field"><span>同一選項重複通知的冷卻時間（分鐘）</span><input type="number" name="cooldownMinutes" min="0" max="10080"></label>
+          <label class="field"><span>商品之間的請求間隔（毫秒）</span><input type="number" name="politeDelayMs" min="0" max="60000"></label>
+          <label class="field"><span>每次請求逾時（秒）</span><input type="number" name="requestTimeoutSec" min="5" max="120"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="notifyOnFirstRun"><span>剛加入時就已經有貨，也通知</span></label>
+        <label class="check"><input type="checkbox" name="notifyOnSoldOut"><span>有貨 → 又賣完時也通知</span></label>
+        <label class="check"><input type="checkbox" name="notifyOnError"><span>讀取失敗時通知（每個冷卻時間最多一次）</span></label>
+        <div class="row"><button type="submit" class="primary">儲存設定</button>
+          <span class="muted small">Chrome 開著時才會檢查；電腦睡眠或 Chrome 關閉期間不會監測。</span></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>匯入／匯出</h2>
+      <p class="muted small" style="margin:0 0 8px">可以直接貼上 PowerShell 版的 <code>config.json</code>（只會讀取 <code>targets</code>），或之前匯出的內容。匯入會加到現有清單，重複的網址會略過。</p>
+      <textarea id="io" rows="5" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="exportBtn">匯出到上方文字框</button>
+        <button id="importBtn" class="primary">從上方文字框匯入</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="margin-bottom:10px">
+        <h2 class="grow" style="margin:0">紀錄</h2>
+        <button id="clearLog" class="link">清除</button>
+      </div>
+      <div id="log"></div>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

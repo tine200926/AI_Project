@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>補貨通知</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { width: 360px; }
+    header { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 15px; margin: 0; }
+    main { padding: 10px 14px; max-height: 420px; overflow-y: auto; display: grid; gap: 8px; }
+    footer { padding: 10px 14px; border-top: 1px solid var(--border); }
+    .item .name { font-weight: 600; }
+    .opts { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+    .empty { text-align: center; padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <header class="row">
+    <div class="grow">
+      <h1>補貨通知</h1>
+      <div id="lastRun" class="muted small">尚未檢查</div>
+    </div>
+    <button id="checkNow" class="primary">立即檢查</button>
+  </header>
+  <main id="list"></main>
+  <footer class="row">
+    <button id="openOptions" class="link">管理監測清單與設定</button>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

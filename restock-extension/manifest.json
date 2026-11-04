@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "補貨通知 for Weverse Shop",
+  "short_name": "補貨通知",
+  "version": "1.0.0",
+  "description": "定時檢查 Weverse Shop 商品頁，指定的選項從售完變成有貨時跳出桌面通知。不需登入、不蒐集任何資料。",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "補貨通知",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "alarms",
+    "storage",
+    "notifications",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "https://shop.weverse.io/*"
+  ]
+}
