@@ -1,0 +1,5 @@
+config.json
+config.backup.json
+state.json
+*.log
+*.log.*

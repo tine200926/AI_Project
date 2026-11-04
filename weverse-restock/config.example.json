@@ -1,0 +1,34 @@
+{
+  "targets": [
+    {
+      "label": "Face Plush Keyring",
+      "url": "https://shop.weverse.io/zh-tw/shop/KRW/artists/7/sales/42095",
+      "watch": ["O.C.L"]
+    },
+    {
+      "label": "（範例）另一個商品：全部選項都監測",
+      "url": "https://shop.weverse.io/zh-tw/shop/KRW/artists/7/sales/41234",
+      "watch": ["*"]
+    }
+  ],
+
+  "line": {
+    "channelAccessToken": "YOUR_CHANNEL_ACCESS_TOKEN",
+    "channelSecret": "YOUR_CHANNEL_SECRET",
+    "to": "YOUR_USER_ID"
+  },
+
+  "intervalSeconds": 300,
+  "cooldownMinutes": 180,
+  "notifyOnFirstRun": false,
+  "notifyOnSoldOut": false,
+  "notifyOnError": true,
+  "requestTimeoutSec": 30,
+  "maxRetries": 3,
+  "politeDelayMs": 1500,
+  "webhookPort": 8787,
+
+  "logMaxMB": 1,
+  "logKeep": 3,
+  "logEveryOption": false
+}
