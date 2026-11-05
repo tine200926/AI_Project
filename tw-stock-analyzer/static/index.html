@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>台股量化分析</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- TradingView Lightweight Charts v4.2.0（Apache-2.0，見 static/vendor/LIGHTWEIGHT-CHARTS-LICENSE） -->
+  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">台股量化分析 <span class="sub">多因子選股 · 風險控管 · 新聞過濾 · 回測 · AI Agent</span></div>
+  <form id="quick" class="quick" autocomplete="off">
+    <input id="quick-code" placeholder="輸入代號，如 2330" inputmode="numeric" aria-label="股票代號">
+    <button>查詢</button>
+  </form>
+</header>
+<div id="demo-banner" class="banner warn" hidden>⚠ 目前為「模擬資料」模式（TWSA_DATA_MODE=demo）：畫面上的數字由亂數產生，與真實市場無關，只用來展示功能。</div>
+<nav class="tabs" role="tablist">
+  <button data-tab="home" class="active">今日推薦</button>
+  <button data-tab="stock">個股分析</button>
+  <button data-tab="news">新聞輿情</button>
+  <button data-tab="backtest">策略回測</button>
+  <button data-tab="agent">AI Agent</button>
+</nav>
+<main>
+  <!-- 今日推薦 -->
+  <section id="tab-home" class="tab active">
+    <div class="card" id="regime-card"><div class="muted">讀取大盤狀態…</div></div>
+    <div class="card">
+      <div class="row wrap gap">
+        <label>策略
+          <select id="preset"><option value="auto">自動（依市場主流）</option></select>
+        </label>
+        <label>檔數 <input id="topn" type="number" value="10" min="1" max="30" class="num"></label>
+        <label class="grow">自訂選股池（選填，逗號分隔）<input id="universe" placeholder="留空 = 預設 45 檔權值股"></label>
+        <button id="run-screen" class="primary">產生推薦</button>
+      </div>
+      <p id="preset-desc" class="muted small"></p>
+    </div>
+    <div id="screen-out"></div>
+  </section>
+
+  <!-- 個股分析 -->
+  <section id="tab-stock" class="tab">
+    <div class="card row wrap gap">
+      <label>代號 <input id="stock-code" value="2330" class="num"></label>
+      <label>資金（元）<input id="capital" type="number" value="1000000" class="num"></label>
+      <label>單筆風險 % <input id="risk-pct" type="number" value="1" step="0.5" class="num"></label>
+      <label>停損 ATR 倍數 <input id="atr-mult" type="number" value="2" step="0.5" class="num"></label>
+      <button id="run-stock" class="primary">分析</button>
+    </div>
+    <div id="stock-out"></div>
+  </section>
+
+  <!-- 新聞 -->
+  <section id="tab-news" class="tab">
+    <div class="card row wrap gap">
+      <label>期間 <select id="news-days"><option value="1">今日</option><option value="3">近 3 天</option><option value="7">近 7 天</option></select></label>
+      <label class="check"><input type="checkbox" id="news-ai"> AI 快速解讀（需 API 金鑰）</label>
+      <button id="run-news" class="primary">讀取新聞</button>
+    </div>
+    <div id="news-out"></div>
+  </section>
+
+  <!-- 回測 -->
+  <section id="tab-backtest" class="tab">
+    <div class="grid2">
+      <div class="card">
+        <h3>多因子選股回測</h3>
+        <div class="row wrap gap">
+          <label>策略 <select id="bt-preset"></select></label>
+          <label>年數 <input id="bt-years" type="number" value="5" min="1" max="10" class="num"></label>
+          <label>持股數 <input id="bt-topn" type="number" value="10" min="3" max="30" class="num"></label>
+          <label>手續費折扣 <input id="bt-disc" type="number" value="1" step="0.05" min="0.1" max="1" class="num"></label>
+          <label class="check"><input type="checkbox" id="bt-val"> 使用本益比歷史（較慢）</label>
+          <button id="run-bt" class="primary">執行</button>
+        </div>
+        <p class="muted small">月底收盤計算因子 → 次一交易日收盤等權調倉。成本：手續費 0.1425% × 折扣、賣出證交稅 0.3%、滑價 0.1%。</p>
+      </div>
+      <div class="card">
+        <h3>個股技術策略回測</h3>
+        <div class="row wrap gap">
+          <label>代號 <input id="sb-code" value="2330" class="num"></label>
+          <label>策略 <select id="sb-strategy"></select></label>
+          <label>年數 <input id="sb-years" type="number" value="5" min="1" max="10" class="num"></label>
+          <label>ATR 停損 <input id="sb-stop" type="number" value="2.5" step="0.5" min="0" class="num"></label>
+          <button id="run-sb" class="primary">執行</button>
+        </div>
+        <p class="muted small">收盤產生訊號 → 次日開盤成交；盤中觸及移動停損即出場。</p>
+      </div>
+    </div>
+    <div id="bt-out"></div>
+  </section>
+
+  <!-- Agent -->
+  <section id="tab-agent" class="tab">
+    <div class="card">
+      <p class="muted small">AI Agent 只能透過工具查資料（選股、個股分析、新聞、回測），回答中的數字都來自下方「工具呼叫紀錄」，不會憑記憶編造。需設定 ANTHROPIC_API_KEY。</p>
+      <div id="chat"></div>
+      <form id="ask" class="row gap">
+        <input id="question" class="grow" placeholder="例如：現在市場主流策略是什麼？幫我挑 5 檔並回測這個策略近 5 年的表現">
+        <button class="primary">送出</button>
+      </form>
+      <div class="chips">
+        <button class="chip" data-q="今天大盤是多頭還是空頭？依目前主流策略推薦 5 檔，並說明風險。">今日推薦</button>
+        <button class="chip" data-q="分析 2330 的技術面、基本面、新聞輿情與停損位置。">分析 2330</button>
+        <button class="chip" data-q="比較動能趨勢與高股息兩個策略近 5 年回測，哪個風險調整後報酬較好？">策略比較</button>
+        <button class="chip" data-q="整理今天的台股財經新聞重點，哪些是雜訊或灌水內容？">今日新聞</button>
+      </div>
+    </div>
+  </section>
+</main>
+<footer id="disclaimer" class="muted small">本網站內容僅為量化研究與資訊整理，不構成任何投資建議或買賣邀約。投資有風險，請自行判斷並承擔盈虧。</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
