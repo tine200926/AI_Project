@@ -1,0 +1,16 @@
+# 每行一個商品：網址 | 選項:數量 | 選項:數量
+# 無選項商品可寫 "網址" 或 "網址 | 數量"
+#
+# 選項寫法（單選 / 下拉選單 / 按鈕 都一樣）：
+#   #2:2            第 2 個選項買 2 個（編號依 list.bat 列出的順序）
+#   2:2             同上（沒有選項剛好叫「2」時當作編號）
+#   A ver.:1        選項名稱
+#   BLACK+M:1       多組按鈕（例如 顏色 + 尺寸），關鍵字用 + 連接
+#   @123456:1       直接指定 saleStockId（最準，list.bat 可查）
+#
+# 不確定怎麼寫？先執行 list.bat 看所有選項。
+https://shop.weverse.io/zh-tw/shop/KRW/artists/3/sales/71109 | 2:2
+https://shop.weverse.io/zh-tw/shop/KRW/artists/3/sales/71109 | 3:1
+https://shop.weverse.io/zh-tw/shop/KRW/artists/3/sales/71109 | 4:1
+# 多組按鈕範例（衣服：顏色 + 尺寸）
+# https://shop.weverse.io/zh-tw/shop/KRW/artists/3/sales/00000 | BLACK+M:1 | WHITE+L:1
