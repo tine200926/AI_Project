@@ -168,4 +168,13 @@ a.book:hover { text-decoration: underline; }
 
 .foot { color: var(--muted); font-size: 12px; margin: 28px 0 40px; }
 
+#timeField .range + .range { margin-top: 8px; }
+.tlabel { min-width: 2.5em; color: var(--muted); font-size: 14px; }
+.range input[type="time"] { min-width: 120px; }
+.vstatus { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.vactions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.vactions button.secondary { margin: 12px 0 0; }
+td .flight { display: block; color: var(--muted); font-size: 12px; }
+#verified + #results { margin-top: 36px; }
+
 [hidden] { display: none !important; }

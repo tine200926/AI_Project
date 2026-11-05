@@ -156,10 +156,43 @@ export function normalizeQuery(raw, today) {
     .sort();
   if (!weekdays.length) errors.push('出發星期至少要選一天');
 
+  const outTime = timeWindow(raw.outTimeFrom, raw.outTimeTo, '去程出發時間', errors);
+  const backTime = tripType === 'roundTrip'
+    ? timeWindow(raw.backTimeFrom, raw.backTimeTo, '回程出發時間', errors)
+    : null;
+
   return {
     errors,
-    query: { tripType, origin, destinations, start, end, minDays, maxDays, minPrice, maxPrice, weekdays },
+    query: {
+      tripType, origin, destinations, start, end, minDays, maxDays, minPrice, maxPrice, weekdays, outTime, backTime,
+    },
   };
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * {from, to} as 'HH:MM', or null when the window doesn't restrict anything.
+ * A blank side means start/end of the day.
+ */
+function timeWindow(rawFrom, rawTo, label, errors) {
+  const from = String(rawFrom || '').trim().slice(0, 5);
+  const to = String(rawTo || '').trim().slice(0, 5);
+  if (!from && !to) return null;
+  if ((from && !TIME_RE.test(from)) || (to && !TIME_RE.test(to))) {
+    errors.push(`${label}請用 時:分 格式，例如 08:00`);
+    return null;
+  }
+  const w = { from: from || '00:00', to: to || '23:59' };
+  if (w.to < w.from) {
+    errors.push(`${label}的結束時間不能早於開始時間`);
+    return null;
+  }
+  return w.from === '00:00' && w.to === '23:59' ? null : w;
+}
+
+export function hasTimeFilter(q) {
+  return !!(q.outTime || q.backTime);
 }
 
 // --------------------------------------------------------------- planning ----
@@ -342,6 +375,187 @@ export function formatPrice(n) {
 
 export function tripLength(days) {
   return days === 1 ? '當天來回' : `${days}天${days - 1}夜`;
+}
+
+/** Deep link for one direction on one date. */
+export function legUrl(leg, currency = 'TWD') {
+  return bookingUrl(leg.origin, { dest: leg.destination, depart: leg.date, ret: null }, currency);
+}
+
+// ---------------------------------------------------------------- flights ----
+// The booking site (booking.tigerairtw.com) loads its results page from a
+// GraphQL query, appFlightSearchResult, with every flight and its fares:
+//   journeys[].legs[].availabilityLegs[]          one bookable flight each
+//     .availabilitySegments[]  {origin, destination, departureTime "YYYY-MM-DD HH:MM:SS",
+//                               arrivalTime, carrierCode, flightNumber}
+//     .fares[]                 {sellable, productClass, availableCount,
+//                               paxFares[{paxType: "ADT", ticketPrice: {totalAmount,
+//                               discountedTotalAmount, userCurrency}}]}
+// totalAmount includes taxes, unlike the daily low-fare calendar.
+
+export function legKey(leg) {
+  return `${leg.origin}-${leg.destination}-${leg.date}`;
+}
+
+/** The directions a trip needs: [outbound] or [outbound, return]. */
+export function tripLegs(origin, trip) {
+  const legs = [{ origin, destination: trip.dest, date: trip.depart }];
+  if (trip.ret) legs.push({ origin: trip.dest, destination: origin, date: trip.ret });
+  return legs;
+}
+
+const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/;
+
+function splitDateTime(s) {
+  const m = DATETIME_RE.exec(String(s || ''));
+  return m ? { date: m[1], time: `${m[2]}:${m[3]}` } : null;
+}
+
+/**
+ * appFlightSearchResult JSON -> [{origin, destination, date, flights}], one
+ * entry per direction and date. Flight: {flightNo, dep, arr, arrDate, stops,
+ * price, currency, fareClass, seats}; price is null when nothing is sellable.
+ */
+export function parseFlightSearch(json) {
+  const res = json && json.data && json.data.appFlightSearchResult;
+  if (!res || typeof res !== 'object') throw new Error('不是虎航的班機查詢結果');
+  const byLeg = new Map();
+  for (const j of res.journeys || []) {
+    for (const leg of (j && j.legs) || []) {
+      for (const al of (leg && leg.availabilityLegs) || []) {
+        const segs = (al && al.availabilitySegments) || [];
+        if (!segs.length) continue;
+        const first = segs[0];
+        const last = segs[segs.length - 1];
+        const dep = splitDateTime(first.departureTime);
+        if (!dep || !first.origin || !last.destination) continue;
+        const arr = splitDateTime(last.arrivalTime);
+
+        let best = null;
+        for (const f of al.fares || []) {
+          if (!f || f.sellable === false) continue;
+          const adt = (f.paxFares || []).find((p) => p && p.paxType === 'ADT');
+          const tp = adt && adt.ticketPrice;
+          if (!tp) continue;
+          const price = Number(tp.discountedTotalAmount) > 0 ? Number(tp.discountedTotalAmount) : Number(tp.totalAmount);
+          if (!(price > 0)) continue;
+          if (!best || price < best.price) {
+            best = {
+              price,
+              currency: tp.userCurrency || '',
+              fareClass: f.productClass || '',
+              seats: Number.isFinite(f.availableCount) ? f.availableCount : null,
+            };
+          }
+        }
+
+        const entry = { origin: first.origin, destination: last.destination, date: dep.date };
+        const key = legKey(entry);
+        if (!byLeg.has(key)) byLeg.set(key, { ...entry, flights: [] });
+        byLeg.get(key).flights.push({
+          flightNo: `${first.carrierCode || ''}${String(first.flightNumber || '').trim()}`,
+          dep: dep.time,
+          arr: arr ? arr.time : '',
+          arrDate: arr ? arr.date : '',
+          stops: segs.length - 1,
+          price: best ? best.price : null,
+          currency: best ? best.currency : '',
+          fareClass: best ? best.fareClass : '',
+          seats: best ? best.seats : null,
+        });
+      }
+    }
+  }
+  for (const v of byLeg.values()) v.flights.sort((a, b) => a.dep.localeCompare(b.dep));
+  return [...byLeg.values()];
+}
+
+/** Cheapest sellable flight departing inside the window (null = any time). */
+export function pickFlight(flights, window) {
+  let best = null;
+  for (const f of flights || []) {
+    if (!(f.price > 0)) continue;
+    if (window && (f.dep < window.from || f.dep > window.to)) continue;
+    if (!best || f.price < best.price || (f.price === best.price && f.dep < best.dep)) best = f;
+  }
+  return best;
+}
+
+/**
+ * Check candidate trips against real flights until the cheapest `keep`
+ * matches are certain, or the search budget runs out.
+ *
+ * `candidates` are trips priced from the daily low-fare calendar, cheapest
+ * first. A day's lowest fare can't be more than any flight on it, so a
+ * candidate's calendar total is a lower bound on what it can cost; once that
+ * bound reaches the keep-th best confirmed total, nothing after it can win.
+ *
+ * `search(missingLegs, trip)` resolves to parseFlightSearch-style entries.
+ * `legCache` (Map legKey -> flights | null) is reused across calls; null marks
+ * a leg whose lookup failed.
+ *
+ * Resolves to {verified, searches, nextIndex, stopReason, errors} where
+ * stopReason is 'exhausted' | 'bound' | 'budget' | 'cancelled' | 'failed'.
+ * Pass nextIndex/verified back in to continue.
+ */
+export async function verifyTrips({
+  q, candidates, legCache, search, keep = 5, maxSearches = 10,
+  startIndex = 0, verified: initial = [], onUpdate, isCancelled,
+}) {
+  const verified = [...initial];
+  const errors = [];
+  let searches = 0;
+  let failuresInRow = 0;
+  let i = startIndex;
+  let stopReason = 'exhausted';
+  const report = () => onUpdate && onUpdate({ verified, searches, index: i, errors });
+
+  for (; i < candidates.length; i++) {
+    if (isCancelled && isCancelled()) { stopReason = 'cancelled'; break; }
+    const cand = candidates[i];
+    const bound = verified.length >= keep ? verified[keep - 1].total : Infinity;
+    if (cand.total >= bound) { stopReason = 'bound'; break; }
+
+    const legs = tripLegs(q.origin, cand);
+    const windows = [q.outTime, q.backTime];
+    // A leg already known to have no usable flight (none in the window, sold
+    // out, or its lookup failed) rules the trip out without another search.
+    if (legs.some((l, k) => legCache.has(legKey(l)) && !pickFlight(legCache.get(legKey(l)), windows[k]))) {
+      report();
+      continue;
+    }
+    const missing = legs.filter((l) => !legCache.has(legKey(l)));
+    if (missing.length) {
+      if (searches >= maxSearches) { stopReason = 'budget'; break; }
+      searches++;
+      report();
+      try {
+        const found = await search(missing, cand);
+        for (const leg of found || []) legCache.set(legKey(leg), leg.flights);
+        // Searched but not in the answer: no flights that day.
+        for (const l of missing) if (!legCache.has(legKey(l))) legCache.set(legKey(l), []);
+        failuresInRow = 0;
+      } catch (e) {
+        errors.push((e && e.message) || String(e));
+        for (const l of missing) legCache.set(legKey(l), null);
+        if (++failuresInRow >= 3) { i++; stopReason = 'failed'; break; }
+        report();
+        continue;
+      }
+    }
+
+    const out = pickFlight(legCache.get(legKey(legs[0])), q.outTime);
+    const back = legs[1] ? pickFlight(legCache.get(legKey(legs[1])), q.backTime) : null;
+    if (out && (!legs[1] || back)) {
+      const total = out.price + (back ? back.price : 0);
+      if (inPriceRange(q, total)) {
+        verified.push({ ...cand, out, back, total, estimate: cand.total });
+        verified.sort((a, b) => a.total - b.total || a.depart.localeCompare(b.depart));
+      }
+    }
+    report();
+  }
+  return { verified, searches, nextIndex: i, stopReason, errors };
 }
 
 // ------------------------------------------------------------------- pool ----

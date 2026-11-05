@@ -1,13 +1,15 @@
 import {
-  addDays, bookingUrl, cheapestPerDestination, findTrips, formatPrice, localToday,
-  mergeFares, normalizeQuery, parseCodes, planRequests, runPool, shortDate, sortTrips,
-  tripLength, WEEKDAY_ZH,
+  addDays, bookingUrl, cheapestPerDestination, findTrips, formatPrice, hasTimeFilter, legUrl,
+  localToday, mergeFares, normalizeQuery, parseCodes, planRequests, runPool, shortDate, sortTrips,
+  tripLength, verifyTrips, WEEKDAY_ZH,
 } from './lib/core.js';
 import { COUNTRIES, STATIONS, stationInfo, stationName } from './lib/stations.js';
 import { availableDestinations, dailyPrices, installHeaderRules } from './lib/api.js';
 
 const CONCURRENCY = 3;
 const PAGE_SIZE = 50;
+const VERIFY_KEEP = 5; // confirm this many of the cheapest time-matching trips
+const VERIFY_BUDGET = 10; // booking-page searches per round of checking
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Monday first
 
 const $ = (id) => document.getElementById(id);
@@ -38,6 +40,7 @@ const ui = {
   shown: PAGE_SIZE,
   allFailed: false,
   searchId: 0,
+  verify: null, // departure-time check, see startVerify
 };
 
 const nameOf = (code) => stationName(code, ui.served);
@@ -57,9 +60,15 @@ function defaults() {
     minPrice: '',
     maxPrice: '',
     weekdays: [0, 1, 2, 3, 4, 5, 6],
+    outTimeFrom: '',
+    outTimeTo: '',
+    backTimeFrom: '',
+    backTimeTo: '',
     sortBy: 'price',
   };
 }
+
+const TIME_FIELDS = ['outTimeFrom', 'outTimeTo', 'backTimeFrom', 'backTimeTo'];
 
 function tripType() {
   return document.querySelector('input[name="tripType"]:checked').value;
@@ -78,6 +87,7 @@ function readForm() {
     minPrice: $('minPrice').value,
     maxPrice: $('maxPrice').value,
     weekdays: [...document.querySelectorAll('#weekdays input:checked')].map((i) => Number(i.value)),
+    ...Object.fromEntries(TIME_FIELDS.map((k) => [k, $(k).value])),
     sortBy: $('sortBy').value,
   };
 }
@@ -95,6 +105,7 @@ function writeForm(f) {
   $('minPrice').value = f.minPrice;
   $('maxPrice').value = f.maxPrice;
   for (const i of document.querySelectorAll('#weekdays input')) i.checked = f.weekdays.includes(Number(i.value));
+  for (const k of TIME_FIELDS) $(k).value = typeof f[k] === 'string' ? f[k] : '';
   $('sortBy').value = f.sortBy === 'date' ? 'date' : 'price';
 }
 
@@ -123,6 +134,7 @@ function saveForm() {
 function syncTripType() {
   const round = tripType() === 'roundTrip';
   $('daysField').hidden = !round;
+  $('backTimeRow').hidden = !round;
   $('periodHint').textContent = round
     ? '最早出發日 ～ 最晚回程日，整趟旅程都在這段期間內'
     : '在這段期間內出發';
@@ -228,6 +240,7 @@ function renderWeekdays() {
 
 function setWeekdays(days) {
   for (const i of document.querySelectorAll('#weekdays input')) i.checked = days.includes(Number(i.value));
+  saveForm();
 }
 
 // ----------------------------------------------------------------- search ----
@@ -250,6 +263,8 @@ async function search(ev) {
   saveForm();
 
   const id = ++ui.searchId;
+  ui.verify = null; // stops a time check still running for the previous search
+  renderVerified();
   const requests = planRequests(query);
   $('go').disabled = true;
   $('results').hidden = true;
@@ -270,6 +285,7 @@ async function search(ev) {
   $('status').hidden = true;
   ui.allFailed = renderWarnings(query, requests, results, fares);
   renderResults();
+  if (hasTimeFilter(query)) startVerify(query, fares);
 }
 
 function renderWarnings(q, requests, results, fares) {
@@ -312,6 +328,7 @@ function renderResults() {
   const q = ui.query;
   const trips = sortTrips(ui.trips, $('sortBy').value);
   $('results').hidden = false;
+  $('resultsNote').hidden = !(hasTimeFilter(q) && trips.length);
 
   $('sortWrap').hidden = !trips.length;
   if (!trips.length) {
@@ -361,6 +378,148 @@ function renderResults() {
   $('more').textContent = `顯示更多（還有 ${left.toLocaleString('en-US')} 筆）`;
 }
 
+// ------------------------------------------------------------- time check ----
+// The calendar has one price per day and no flight times, so departure-time
+// filtering checks the cheapest candidates on the booking site itself (see
+// background.js), cheapest first, until the best matches are certain.
+
+function startVerify(query, fares) {
+  // The price floor is applied to real prices only: a calendar price under
+  // the floor can still turn into a real price above it.
+  const candidates = findTrips({ ...query, minPrice: null }, fares);
+  if (!candidates.length) return;
+  ui.verify = {
+    q: query,
+    candidates,
+    legCache: new Map(),
+    verified: [],
+    nextIndex: 0,
+    keep: VERIFY_KEEP,
+    searches: 0,
+    roundSearches: 0,
+    errors: [],
+    running: false,
+    cancelled: false,
+    stopReason: '',
+  };
+  runVerify();
+}
+
+async function checkFlightsFor(q, missing, trip) {
+  const url = missing.length === 2 ? bookingUrl(q.origin, trip) : legUrl(missing[0]);
+  const r = await chrome.runtime.sendMessage({ type: 'checkFlights', url, need: missing });
+  if (!r) throw new Error('擴充功能背景沒有回應');
+  if (!r.ok) throw new Error(r.error);
+  return r.legs;
+}
+
+async function runVerify() {
+  const v = ui.verify;
+  if (!v || v.running) return;
+  v.running = true;
+  v.cancelled = false;
+  v.roundSearches = 0;
+  v.roundErrors = [];
+  renderVerified();
+  const res = await verifyTrips({
+    q: v.q,
+    candidates: v.candidates,
+    legCache: v.legCache,
+    search: (missing, trip) => checkFlightsFor(v.q, missing, trip),
+    keep: v.keep,
+    maxSearches: VERIFY_BUDGET,
+    startIndex: v.nextIndex,
+    verified: v.verified,
+    isCancelled: () => ui.verify !== v || v.cancelled,
+    onUpdate: (st) => {
+      if (ui.verify !== v) return;
+      v.verified = st.verified;
+      v.roundSearches = st.searches;
+      v.roundErrors = st.errors;
+      renderVerified();
+    },
+  });
+  if (ui.verify !== v) return;
+  Object.assign(v, {
+    running: false,
+    verified: res.verified,
+    nextIndex: res.nextIndex,
+    searches: v.searches + res.searches,
+    errors: [...v.errors, ...res.errors],
+    stopReason: res.stopReason,
+  });
+  renderVerified();
+}
+
+function flightLine(f) {
+  return h('span', { class: 'flight', text: `${f.flightNo} ${f.dep} → ${f.arr}${f.stops ? `（轉機 ${f.stops} 次）` : ''}` });
+}
+
+function renderVerified() {
+  const v = ui.verify;
+  $('verified').hidden = !v;
+  if (!v) return;
+  const q = v.q;
+  const round = q.tripType === 'roundTrip';
+  const list = v.verified;
+  const when = [
+    q.outTime && `去程 ${q.outTime.from}～${q.outTime.to}`,
+    q.backTime && `回程 ${q.backTime.from}～${q.backTime.to}`,
+  ].filter(Boolean).join('、') + ' 出發';
+
+  $('vSummary').textContent = list.length
+    ? `${when}：最便宜 TWD ${formatPrice(list[0].total)}（含稅）`
+    : v.running ? `正在確認 ${when} 的班機…` : `${when}：沒有找到符合的班機`;
+
+  const done = v.searches + (v.running ? v.roundSearches : 0);
+  const status = {
+    bound: `已確認 ${done} 組日期。這幾筆就是符合時間的最便宜組合：其他日期光是每日最低價就已經比它們貴。`,
+    exhausted: list.length
+      ? `所有候選日期都確認完了（查了 ${done} 組）。`
+      : `所有候選日期都確認完了（查了 ${done} 組），在指定時段都沒有可訂的班機，可以放寬出發時間或日期。`,
+    budget: `已確認 ${done} 組日期，先停在這裡；可能還有更便宜的沒確認到，可以按「繼續確認」。`,
+    cancelled: `已停止（確認了 ${done} 組日期）。`,
+    failed: '連續幾次確認都失敗，先停下來。',
+  }[v.stopReason] || '';
+  $('vStatus').textContent = v.running
+    ? `正在用虎航訂票頁確認班機時間：這一輪第 ${v.roundSearches} 組日期（最多 ${VERIFY_BUDGET} 組），會開背景分頁，查完自動關閉。`
+    : status;
+
+  const errs = [...new Set([...v.errors, ...(v.running ? v.roundErrors || [] : [])])];
+  $('vWarnings').replaceChildren(...(errs.length
+    ? [h('div', { class: 'alert warn', text: `部分日期確認失敗：${errs.join('；')}` })]
+    : []));
+
+  $('vTableWrap').hidden = !list.length;
+  if (list.length) {
+    $('vTable').tHead.replaceChildren(h('tr', {},
+      round
+        ? ['#', '目的地', '去程', '回程', '天數', '去程價', '回程價', '合計（含稅）', '']
+          .map((t, i) => h('th', { class: i >= 5 && i <= 7 ? 'num' : '', text: t }))
+        : ['#', '目的地', '出發', '票價（含稅）', ''].map((t, i) => h('th', { class: i === 3 ? 'num' : '', text: t }))));
+    $('vTable').tBodies[0].replaceChildren(...list.map((t, i) => h('tr', { class: i === 0 ? 'cheapest' : '' },
+      h('td', { class: 'rank', text: i + 1 }),
+      h('td', {}, nameOf(t.dest), h('small', { text: ` ${t.dest}` })),
+      h('td', {}, shortDate(t.depart), flightLine(t.out)),
+      round && h('td', {}, shortDate(t.ret), flightLine(t.back)),
+      round && h('td', { text: tripLength(t.days) }),
+      round && h('td', { class: 'num', text: formatPrice(t.out.price) }),
+      round && h('td', { class: 'num', text: formatPrice(t.back.price) }),
+      h('td', { class: 'num total', text: `TWD ${formatPrice(t.total)}` }),
+      h('td', {}, h('a', { class: 'book', href: bookingUrl(q.origin, t), target: '_blank', rel: 'noopener', text: '去訂票' })))));
+  }
+
+  $('vStop').hidden = !v.running;
+  const more = !v.running && v.nextIndex < v.candidates.length && v.stopReason !== 'exhausted';
+  $('vMore').hidden = !more;
+  $('vMore').textContent = v.stopReason === 'bound' ? `再多找 ${VERIFY_KEEP} 組` : '繼續確認';
+}
+
+function setTimes(outFrom, outTo, backFrom, backTo) {
+  [outFrom, outTo, backFrom, backTo].forEach((val, i) => { $(TIME_FIELDS[i]).value = val; });
+  saveForm();
+}
+
 // ------------------------------------------------------------------- init ----
 async function init() {
   renderOrigins();
@@ -381,6 +540,15 @@ async function init() {
   $('more').addEventListener('click', () => { ui.shown += PAGE_SIZE; renderResults(); });
   $('wkAll').addEventListener('click', () => setWeekdays([0, 1, 2, 3, 4, 5, 6]));
   $('wkWeekend').addEventListener('click', () => setWeekdays([4, 5, 6]));
+  $('tmPreset').addEventListener('click', () => setTimes('00:00', '12:00', '14:00', '23:59'));
+  $('tmClear').addEventListener('click', () => setTimes('', '', '', ''));
+  $('vStop').addEventListener('click', () => { if (ui.verify) { ui.verify.cancelled = true; $('vStop').hidden = true; } });
+  $('vMore').addEventListener('click', () => {
+    const v = ui.verify;
+    if (!v || v.running) return;
+    if (v.stopReason === 'bound') v.keep += VERIFY_KEEP;
+    runVerify();
+  });
 
   await loadRoutes();
 }

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "虎航低價機票搜尋",
   "short_name": "虎航低價搜尋",
-  "version": "1.0.0",
-  "description": "設定目的地、來回或單程、旅遊天數、可出發期間與預算，一次找出台灣虎航最便宜的日期組合。非官方工具。",
+  "version": "1.1.0",
+  "description": "設定目的地、來回或單程、旅遊天數、可出發期間、班機出發時間與預算，一次找出台灣虎航最便宜的日期組合。非官方工具。",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
@@ -28,6 +28,28 @@
   ],
   "host_permissions": [
     "https://api-cms.tigerairtw.com/*",
-    "https://api-book.tigerairtw.com/*"
+    "https://api-book.tigerairtw.com/*",
+    "https://booking.tigerairtw.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://booking.tigerairtw.com/*"
+      ],
+      "js": [
+        "content/hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://booking.tigerairtw.com/*"
+      ],
+      "js": [
+        "content/relay.js"
+      ],
+      "run_at": "document_start"
+    }
   ]
 }

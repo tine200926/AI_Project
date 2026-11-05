@@ -233,3 +233,199 @@ test('runPool limits concurrency, keeps order and never rejects', async () => {
   assert.deepEqual(progress, ['1/5', '2/5', '3/5', '4/5', '5/5']);
   assert.deepEqual(await runPool([], 3), []);
 });
+
+// ------------------------------------------------------- departure times ----
+import { hasTimeFilter, legKey, legUrl, parseFlightSearch, pickFlight, verifyTrips } from '../lib/core.js';
+
+test('normalizeQuery departure-time windows', () => {
+  const base = {
+    tripType: 'roundTrip', origin: 'TPE', destinations: ['KIX'], start: '2026-12-01', end: '2026-12-10',
+    minDays: 3, maxDays: 5, weekdays: ALL_DAYS,
+  };
+  const run = (over) => normalizeQuery({ ...base, ...over }, '2026-11-05');
+  let r = run({});
+  assert.equal(r.query.outTime, null);
+  assert.equal(r.query.backTime, null);
+  assert.equal(hasTimeFilter(r.query), false);
+
+  r = run({ outTimeFrom: '06:00', outTimeTo: '12:00', backTimeFrom: '15:00', backTimeTo: '' });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.query.outTime, { from: '06:00', to: '12:00' });
+  assert.deepEqual(r.query.backTime, { from: '15:00', to: '23:59' });
+  assert.equal(hasTimeFilter(r.query), true);
+
+  // A whole-day window is no filter; seconds from <input type=time step=1> are dropped.
+  r = run({ outTimeFrom: '00:00', outTimeTo: '23:59', backTimeTo: '10:30:00' });
+  assert.equal(r.query.outTime, null);
+  assert.deepEqual(r.query.backTime, { from: '00:00', to: '10:30' });
+
+  assert.match(run({ outTimeFrom: '12:00', outTimeTo: '08:00' }).errors[0], /去程出發時間的結束時間/);
+  assert.match(run({ backTimeFrom: '25:00' }).errors[0], /回程出發時間請用/);
+  // One-way ignores the return window.
+  r = run({ tripType: 'oneWay', backTimeFrom: '25:00', outTimeFrom: '18:00' });
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.query.backTime, null);
+  assert.deepEqual(r.query.outTime, { from: '18:00', to: '23:59' });
+});
+
+function seg(o, d, date, dep, arr, no) {
+  return { origin: o, destination: d, departureTime: `${date} ${dep}:00`, arrivalTime: `${date} ${arr}:00`, carrierCode: 'IT', flightNumber: ` ${no}` };
+}
+function fare(cls, total, { discounted = 0, sellable = true, count = 9 } = {}) {
+  return { sellable, productClass: cls, availableCount: count,
+    paxFares: [{ paxType: 'CHD', ticketPrice: { totalAmount: 1 } }, { paxType: 'ADT', ticketPrice: { totalAmount: total, discountedTotalAmount: discounted, userCurrency: 'TWD' } }] };
+}
+
+const SEARCH_JSON = { data: { appFlightSearchResult: { journeys: [
+  { legs: [{ availabilityLegs: [
+    { availabilitySegments: [seg('TPE', 'KIX', '2026-12-04', '13:30', '17:05', 202)], fares: [fare('tigersmart', 4100), fare('tigerlight', 3200)] },
+    { availabilitySegments: [seg('TPE', 'KIX', '2026-12-04', '06:50', '10:20', 200)], fares: [fare('tigerlight', 3900, { discounted: 3500 })] },
+    { availabilitySegments: [seg('TPE', 'KIX', '2026-12-04', '21:00', '00:35', 206)], fares: [fare('tigerlight', 2100, { sellable: false })] },
+  ] }] },
+  { legs: [{ availabilityLegs: [
+    { availabilitySegments: [seg('KIX', 'TPE', '2026-12-08', '18:40', '20:45', 203)], fares: [fare('tigerlight', 2800)] },
+  ] }] },
+] } } };
+
+test('parseFlightSearch reads flights, times and the cheapest sellable adult fare', () => {
+  const legs = parseFlightSearch(SEARCH_JSON);
+  assert.deepEqual(legs.map(legKey), ['TPE-KIX-2026-12-04', 'KIX-TPE-2026-12-08']);
+  assert.deepEqual(legs[0].flights.map((f) => [f.flightNo, f.dep, f.arr, f.price, f.fareClass]), [
+    ['IT200', '06:50', '10:20', 3500, 'tigerlight'], // discounted price wins
+    ['IT202', '13:30', '17:05', 3200, 'tigerlight'], // cheapest family
+    ['IT206', '21:00', '00:35', null, ''], // nothing sellable
+  ]);
+  assert.equal(legs[1].flights[0].price, 2800);
+  assert.deepEqual(parseFlightSearch({ data: { appFlightSearchResult: { journeys: [] } } }), []);
+  assert.throws(() => parseFlightSearch({ data: { other: 1 } }), /不是虎航/);
+});
+
+test('pickFlight respects the window and skips sold-out flights', () => {
+  const flights = parseFlightSearch(SEARCH_JSON)[0].flights;
+  assert.equal(pickFlight(flights, null).flightNo, 'IT202');
+  assert.equal(pickFlight(flights, { from: '00:00', to: '12:00' }).flightNo, 'IT200');
+  assert.equal(pickFlight(flights, { from: '20:00', to: '23:59' }), null); // IT206 is sold out
+  assert.equal(pickFlight(flights, { from: '13:30', to: '13:30' }).flightNo, 'IT202'); // inclusive
+  assert.equal(pickFlight(null, null), null);
+});
+
+test('legUrl', () => {
+  const u = new URL(legUrl({ origin: 'KIX', destination: 'TPE', date: '2026-12-08' }));
+  assert.equal(u.searchParams.get('type'), 'oneWay');
+  assert.equal(u.searchParams.get('outbound'), 'KIX-TPE');
+  assert.equal(u.searchParams.get('departureDate'), '2026-12-08');
+});
+
+// A fake booking site: flights at 07:00 / 13:00 / 19:00, each costing the
+// calendar price plus a tax and a per-flight surcharge.
+function fakeWorld(calendar, surcharge = { '07:00': 300, '13:00': 0, '19:00': 600 }) {
+  const calls = [];
+  const flightsFor = (o, d, date) => {
+    const base = calendar[`${o}-${d}-${date}`];
+    if (!base) return [];
+    return Object.entries(surcharge).map(([dep, extra], i) => ({
+      flightNo: `IT${i}`, dep, arr: '', stops: 0, price: base + 200 + extra,
+    }));
+  };
+  const search = async (missing) => {
+    calls.push(missing.map(legKey).join(' + '));
+    return missing.map((l) => ({ ...l, flights: flightsFor(l.origin, l.destination, l.date) }));
+  };
+  return { calls, search };
+}
+
+function tripsFrom(calendar, q) {
+  const fares = { KIX: { out: new Map(), back: new Map() } };
+  for (const [k, v] of Object.entries(calendar)) {
+    const [o, , y, m, d] = k.split('-');
+    (o === 'TPE' ? fares.KIX.out : fares.KIX.back).set(`${y}-${m}-${d}`, v);
+  }
+  return findTrips(q, fares);
+}
+
+test('verifyTrips finds the cheapest time-matching trips and stops at the bound', async () => {
+  const calendar = {
+    'TPE-KIX-2026-12-01': 1000, 'TPE-KIX-2026-12-02': 1100, 'TPE-KIX-2026-12-03': 3000,
+    'KIX-TPE-2026-12-04': 1000, 'KIX-TPE-2026-12-05': 1050, 'KIX-TPE-2026-12-06': 3000,
+  };
+  const q = query({ start: '2026-12-01', end: '2026-12-06', minDays: 4, maxDays: 4, outTime: { from: '06:00', to: '10:00' }, backTime: null });
+  const candidates = tripsFrom(calendar, q);
+  assert.deepEqual(candidates.map((c) => `${c.depart.slice(8)}-${c.ret.slice(8)}:${c.total}`), ['01-04:2000', '02-05:2150', '03-06:6000']);
+
+  const { calls, search } = fakeWorld(calendar);
+  const legCache = new Map();
+  const updates = [];
+  const r = await verifyTrips({ q, candidates, legCache, search, keep: 1, onUpdate: (u) => updates.push(u.searches) });
+  // Outbound must leave 06:00-10:00 -> the 07:00 flight (+300); return any time -> 13:00 (+0).
+  assert.equal(r.verified[0].total, 1000 + 200 + 300 + 1000 + 200);
+  assert.equal(r.verified[0].out.dep, '07:00');
+  assert.equal(r.verified[0].back.dep, '13:00');
+  assert.equal(r.verified[0].estimate, 2000);
+  // 2nd candidate's calendar total (2150) < 2700, so it is checked; the 3rd (6000) is not.
+  assert.equal(r.stopReason, 'bound');
+  assert.equal(r.nextIndex, 2);
+  assert.equal(r.searches, 2);
+  assert.deepEqual(calls, ['TPE-KIX-2026-12-01 + KIX-TPE-2026-12-04', 'TPE-KIX-2026-12-02 + KIX-TPE-2026-12-05']);
+  assert.ok(updates.length >= 2);
+
+  // Continue with a bigger keep: only the third candidate is new.
+  const r2 = await verifyTrips({ q, candidates, legCache, search, keep: 5, startIndex: r.nextIndex, verified: r.verified });
+  assert.equal(r2.stopReason, 'exhausted');
+  assert.equal(r2.verified.length, 3);
+  assert.equal(calls.length, 3);
+});
+
+test('verifyTrips reuses legs, honours budget, price range, failures and cancel', async () => {
+  const calendar = {
+    'TPE-KIX-2026-12-01': 1000, 'KIX-TPE-2026-12-03': 1000, 'KIX-TPE-2026-12-04': 1100, 'KIX-TPE-2026-12-05': 1200,
+  };
+  const q = query({ start: '2026-12-01', end: '2026-12-05', minDays: 3, maxDays: 5, outTime: { from: '18:00', to: '23:59' }, backTime: null });
+  const candidates = tripsFrom(calendar, q);
+  assert.equal(candidates.length, 3); // same outbound day, three return days
+
+  let world = fakeWorld(calendar);
+  let r = await verifyTrips({ q, candidates, legCache: new Map(), search: world.search, keep: 5 });
+  // The outbound leg is looked up once, then reused (one-leg searches after that).
+  assert.deepEqual(world.calls, [
+    'TPE-KIX-2026-12-01 + KIX-TPE-2026-12-03', 'KIX-TPE-2026-12-04', 'KIX-TPE-2026-12-05',
+  ]);
+  assert.deepEqual(r.verified.map((t) => t.out.dep), ['19:00', '19:00', '19:00']);
+
+  // Budget.
+  world = fakeWorld(calendar);
+  r = await verifyTrips({ q, candidates, legCache: new Map(), search: world.search, keep: 5, maxSearches: 1 });
+  assert.equal(r.stopReason, 'budget');
+  assert.equal(r.verified.length, 1);
+  assert.equal(r.nextIndex, 1);
+
+  // Price range applies to real prices: 1000+200+600 + 1000+200 = 3000.
+  world = fakeWorld(calendar);
+  r = await verifyTrips({ q: { ...q, maxPrice: 3000 }, candidates, legCache: new Map(), search: world.search });
+  assert.deepEqual(r.verified.map((t) => t.total), [3000]);
+
+  // No flight in the window at all.
+  world = fakeWorld(calendar, { '07:00': 0 });
+  r = await verifyTrips({ q, candidates, legCache: new Map(), search: world.search });
+  assert.equal(r.stopReason, 'exhausted');
+  assert.equal(r.verified.length, 0);
+  // The outbound day has nothing in the window, so its other trips are skipped unsearched.
+  assert.equal(world.calls.length, 1);
+
+  // Three failures in a row stop the run; a failed leg is not retried.
+  let n = 0;
+  r = await verifyTrips({ q: { ...q, outTime: null }, candidates, legCache: new Map(), search: async () => { n++; throw new Error('逾時'); } });
+  assert.equal(r.stopReason, 'exhausted'); // later candidates share the failed outbound leg
+  assert.equal(n, 1);
+  assert.deepEqual(r.errors, ['逾時']);
+  n = 0;
+  const many = [1, 2, 3, 4].map((d) => ({ dest: 'KIX', depart: `2026-12-0${d}`, ret: null, total: 1000 + d }));
+  r = await verifyTrips({ q: { ...q, tripType: 'oneWay' }, candidates: many, legCache: new Map(), search: async () => { n++; throw new Error('x'); } });
+  assert.equal(r.stopReason, 'failed');
+  assert.equal(n, 3);
+  assert.equal(r.nextIndex, 3);
+
+  // Cancel before anything runs.
+  r = await verifyTrips({ q, candidates, legCache: new Map(), search: world.search, isCancelled: () => true });
+  assert.equal(r.stopReason, 'cancelled');
+  assert.equal(r.nextIndex, 0);
+});

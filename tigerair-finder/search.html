@@ -79,6 +79,26 @@
           <div id="weekdays" class="chips"></div>
           <p class="hint"><button type="button" class="link" id="wkAll">全選</button>・<button type="button" class="link" id="wkWeekend">只看週四～週六出發</button></p>
         </fieldset>
+
+        <fieldset class="field" id="timeField">
+          <legend>班機出發時間</legend>
+          <div class="range">
+            <span class="tlabel">去程</span>
+            <input type="time" id="outTimeFrom" aria-label="去程最早出發時間">
+            <span>～</span>
+            <input type="time" id="outTimeTo" aria-label="去程最晚出發時間">
+          </div>
+          <div class="range" id="backTimeRow">
+            <span class="tlabel">回程</span>
+            <input type="time" id="backTimeFrom" aria-label="回程最早出發時間">
+            <span>～</span>
+            <input type="time" id="backTimeTo" aria-label="回程最晚出發時間">
+          </div>
+          <p class="hint">
+            <button type="button" class="link" id="tmPreset">去程中午前・回程下午後</button>・<button type="button" class="link" id="tmClear">不限</button><br>
+            留空表示不限。設定後會在背景分頁打開虎航訂票頁，確認每班飛機的時間與含稅價格（每組日期約 10～20 秒，查完自動關閉）。
+          </p>
+        </fieldset>
       </div>
 
       <div class="actions">
@@ -92,7 +112,26 @@
       <span id="statusText"></span>
     </section>
 
+    <section id="verified" class="results" hidden>
+      <div class="results-head">
+        <h2 id="vSummary"></h2>
+      </div>
+      <p id="vStatus" class="vstatus" aria-live="polite"></p>
+      <div id="vWarnings"></div>
+      <div class="table-wrap" id="vTableWrap" hidden>
+        <table id="vTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="vactions">
+        <button type="button" id="vStop" class="secondary" hidden>停止確認</button>
+        <button type="button" id="vMore" class="secondary" hidden>繼續確認更多日期</button>
+      </div>
+    </section>
+
     <section id="results" class="results" hidden>
+      <p id="resultsNote" class="hint" hidden>以下是每日最低價（還沒依班機出發時間篩選，可能未含稅），上方的確認結果就是從這裡由便宜到貴挑出來查的。</p>
       <div id="warnings"></div>
       <div class="results-head">
         <h2 id="summary"></h2>
