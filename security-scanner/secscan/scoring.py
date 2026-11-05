@@ -63,7 +63,9 @@ class Locations:
         self.risky.sort(key=lambda t: len(t[0]), reverse=True)
 
     def classify(self, path: str) -> Tuple[int, str]:
-        if not path:
+        # 只看絕對路徑：「powershell」這種裸名稱若用目前資料夾去補，
+        # 從下載資料夾執行掃描時會把所有指令都誤判成在下載資料夾
+        if not path or not os.path.isabs(path):
             return 0, ""
         p = norm(path)
         for prefix, weight, label in self.risky:

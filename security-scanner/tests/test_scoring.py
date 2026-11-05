@@ -40,6 +40,17 @@ class ScoringTests(unittest.TestCase):
         self.assertGreaterEqual(s.score, 6)
         self.assertEqual(score_command("/usr/bin/true", loc).score, 0)
 
+    def test_relative_names_ignore_cwd(self):
+        import tempfile
+        loc = Locations()
+        old = os.getcwd()
+        os.chdir(tempfile.gettempdir())
+        try:
+            self.assertEqual(loc.classify("python3"), (0, ""))
+            self.assertEqual(score_command("python3 -m http.server", loc).score, 0)
+        finally:
+            os.chdir(old)
+
     def test_severity(self):
         self.assertEqual(severity_from_score(0), Severity.INFO)
         self.assertEqual(severity_from_score(2), Severity.LOW)
