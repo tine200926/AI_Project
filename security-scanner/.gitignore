@@ -1,0 +1,5 @@
+reports/
+allowlist.txt
+data/hashes/malwarebazaar-*.txt
+__pycache__/
+*.pyc

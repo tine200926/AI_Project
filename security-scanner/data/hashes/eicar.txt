@@ -1,0 +1,6 @@
+# EICAR 防毒測試檔的雜湊值（用來確認雜湊比對功能正常）
+# 你可以在這個資料夾放任何惡意程式雜湊清單（.txt / .csv，每行一個 MD5 / SHA1 / SHA256），掃描時會自動載入。
+# 執行 python -m secscan --update-hashes 會下載 MalwareBazaar 近 48 小時的清單到這裡。
+275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f
+3395856ce81f2b7382dee72602f798b642f14140
+44d88612fea8a8f36de82e1278abb02f

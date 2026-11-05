@@ -1,0 +1,10 @@
+# 白名單：複製成 allowlist.txt 後編輯。符合的項目不會出現在報告中。
+# 每行一個：
+#   - 路徑萬用字元（* 任意字元、? 單一字元，Windows 不分大小寫）
+#   - 檔案的 SHA256（報告的「詳細資料」裡可以找到）
+#
+# 範例：
+# C:\Users\*\Downloads\my-own-tool.exe
+# C:\Tools\*
+# HKCU\Software\Microsoft\Windows\CurrentVersion\Run → MyApp
+# 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
