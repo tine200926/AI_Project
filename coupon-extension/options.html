@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>優惠券定時領取｜設定</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="options">
+<main>
+  <h1>優惠券定時領取</h1>
+  <p class="muted">到了設定的時間，會自動打開 <a href="https://myship.7-11.com.tw/mem/GetCoupon" target="_blank" rel="noopener">賣貨便領取優惠券頁</a>，對準網站時間重新整理，並一直點「領取」直到領完或時間到。<br>
+  <strong>請先在 Chrome 登入賣貨便</strong>，到時候 Chrome 要開著、電腦不要睡眠。</p>
+
+  <section class="card">
+    <h2>排程</h2>
+    <table>
+      <thead><tr><th>啟用</th><th>名稱</th><th>時間</th><th>下一次</th><th></th></tr></thead>
+      <tbody id="schedList"></tbody>
+    </table>
+    <p id="schedEmpty" class="muted small">還沒有排程。</p>
+
+    <h2 style="margin-top:16px">新增排程</h2>
+    <div class="grid">
+      <label class="field"><span>名稱（可空白）</span><input id="newName" type="text" placeholder="例如：雙11 免運券"></label>
+      <label class="field"><span>類型</span>
+        <select id="newMode"><option value="once">指定日期一次</option><option value="daily">每天／每週固定時間</option></select>
+      </label>
+      <label class="field" id="dateField"><span>日期</span><input id="newDate" type="date"></label>
+      <label class="field"><span>時間（時:分:秒）</span><input id="newTime" type="time" step="1" value="10:00:00"></label>
+    </div>
+    <div id="daysField" class="field" style="margin-top:10px" hidden>
+      <span class="small muted">星期（都不選＝每天）</span>
+      <div class="days" id="newDays"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="addSched" class="primary">新增</button>
+      <span id="addMsg" class="small"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>領取設定</h2>
+    <div class="grid">
+      <label class="field"><span>提前幾秒打開頁面</span><input id="leadSec" type="number" min="5" max="600"></label>
+      <label class="field"><span>到點後持續嘗試（秒）</span><input id="durationSec" type="number" min="5" max="600"></label>
+      <label class="field"><span>同一顆按鈕重按間隔（毫秒）</span><input id="clickIntervalMs" type="number" min="100" max="10000" step="50"></label>
+      <label class="field"><span>找不到按鈕時重新整理間隔（毫秒）</span><input id="refreshIntervalMs" type="number" min="500" max="60000" step="100"></label>
+      <label class="field"><span>提早幾毫秒動作（抵銷網路延遲）</span><input id="advanceMs" type="number" min="0" max="5000" step="50"></label>
+    </div>
+    <div style="margin-top:12px; display:grid; gap:6px">
+      <label class="check"><input id="refreshAtStart" type="checkbox"><span>到點時重新整理頁面<br><span class="small muted">優惠券多半要重新整理才會出現可領取的按鈕。</span></span></label>
+      <label class="check"><input id="timeSync" type="checkbox"><span>用網站時間校正<br><span class="small muted">讀網站回應的時間，修正電腦時鐘的誤差。</span></span></label>
+      <label class="check"><input id="autoConfirm" type="checkbox"><span>自動按「確定」<br><span class="small muted">領取時跳出的確認視窗、提示視窗自動按確定，訊息會記在下面的紀錄。</span></span></label>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <label class="field"><span>只領名稱包含這些字的券（逗號分隔，空白＝全部）</span><input id="couponFilter" type="text" placeholder="例如：免運, 50元"></label>
+      <label class="field"><span>領取按鈕的文字（逗號分隔）</span><input id="claimKeywords" type="text"></label>
+      <label class="field"><span>不要按的按鈕文字（逗號分隔）</span><input id="excludeKeywords" type="text"></label>
+      <label class="field"><span>進階：按鈕的 CSS 選擇器（空白＝用文字找）</span><input id="customSelector" type="text" placeholder="例如：.coupon-item .btn-get"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="saveSettings" class="primary">儲存設定</button>
+      <button id="resetSettings">恢復預設</button>
+      <button id="testNow" title="5 秒後執行一次（會真的按領取）">立即執行一次</button>
+      <span id="saveMsg" class="small"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">紀錄</h2><button id="clearLog">清除</button></div>
+    <div id="log" class="log" style="margin-top:8px"></div>
+  </section>
+</main>
+<script src="lib/core.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

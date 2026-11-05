@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>優惠券定時領取</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="popup">
+  <strong>優惠券定時領取</strong>
+  <div id="status" class="status">
+    <div id="statusTitle" class="small muted">下一次領取</div>
+    <div id="big" class="big tabular">—</div>
+    <div id="sub" class="small muted"></div>
+  </div>
+  <div class="buttons">
+    <button id="startNow" class="primary" title="5 秒後執行一次（會真的按領取），可用來確認有沒有登入、按鈕找不找得到">立即執行一次</button>
+    <button id="stop" class="danger">停止</button>
+    <button id="openPage">開啟優惠券頁</button>
+    <button id="openOptions">排程與設定</button>
+  </div>
+  <p class="small muted">要搶的時候 Chrome 要開著、電腦不要睡眠，並先在賣貨便登入。</p>
+  <script src="lib/core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
