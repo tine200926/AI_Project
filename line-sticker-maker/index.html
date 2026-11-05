@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LINE 貼圖快速製作</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --text: #1d2329;
+    --muted: #66717d;
+    --line: #dfe4ea;
+    --accent: #06c755;
+    --accent-ink: #ffffff;
+    --danger: #e5484d;
+    --warn: #b7791f;
+    --check-a: #ffffff;
+    --check-b: #e6e9ed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171a; --panel: #1d2125; --text: #e8ecef; --muted: #98a2ad;
+      --line: #2e343a; --check-a: #2a2f34; --check-b: #22262a; --warn: #e3b341;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171a; --panel: #1d2125; --text: #e8ecef; --muted: #98a2ad;
+    --line: #2e343a; --check-a: #2a2f34; --check-b: #22262a; --warn: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  header { padding: 20px 16px 4px; max-width: 1200px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 12px 16px 48px; display: grid; gap: 16px; grid-template-columns: 300px 1fr; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  aside.panel { position: sticky; top: 12px; }
+  @media (max-width: 860px) { aside.panel { position: static; } }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .field { margin-bottom: 14px; }
+  .field label.title { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  select, input[type="number"] {
+    width: 100%; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); color: var(--text); font: inherit;
+  }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="checkbox"] { accent-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .inline { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  button {
+    font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.block { width: 100%; }
+  .drop {
+    border: 2px dashed var(--line); border-radius: 12px; padding: 28px 16px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .drop strong { color: var(--text); display: block; font-size: 16px; margin-bottom: 2px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 10px; }
+  .toolbar .status { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); display: flex; flex-direction: column; }
+  .card.is-main { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .thumb {
+    aspect-ratio: 370 / 320; display: grid; place-items: center; position: relative;
+    background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 16px 16px;
+  }
+  .thumb img { max-width: 100%; max-height: 100%; display: block; }
+  .thumb .badge {
+    position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.65); color: #fff;
+    font-size: 12px; padding: 1px 7px; border-radius: 10px;
+  }
+  .thumb .state { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--panel) 70%, transparent); }
+  .meta { padding: 8px; display: grid; gap: 6px; font-size: 12px; }
+  .meta .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .meta .err { color: var(--danger); }
+  .meta select { padding: 4px 6px; font-size: 12px; }
+  .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .actions button { padding: 3px 7px; font-size: 12px; flex: 1; white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 0 10px; font-size: 14px; }
+  .notice { font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); margin-top: 10px; }
+  .notice.warn { color: var(--warn); border-color: currentColor; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  details ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+  .swatch { width: 34px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; flex: 0 0 34px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LINE 貼圖快速製作</h1>
+  <p>一次拖入多張圖片 → 自動去背、裁切、加白邊 → 依 LINE 規格輸出 ZIP（貼圖、main.png、tab.png）。所有處理都在你的瀏覽器內完成，不會上傳圖片。</p>
+</header>
+
+<main>
+  <aside class="panel">
+    <h2>設定</h2>
+
+    <div class="field">
+      <label class="title" for="mode">去背方式</label>
+      <select id="mode">
+        <option value="ai">AI 自動去背（照片、複雜背景）</option>
+        <option value="color">背景色去除（插圖、純色背景，快速）</option>
+        <option value="none">不去背（圖片已是透明 PNG）</option>
+      </select>
+      <div class="hint" id="modeHint"></div>
+    </div>
+
+    <div class="field" id="colorOpts">
+      <label class="title" for="tolerance">顏色容許度：<span id="tolVal">32</span></label>
+      <input type="range" id="tolerance" min="4" max="120" value="32">
+      <label class="inline"><input type="checkbox" id="globalKey"> 也移除被包住的同色區塊（例如手臂間的空隙）</label>
+      <div class="hint">自動偵測圖片四周的顏色當作背景。</div>
+    </div>
+
+    <div class="field">
+      <label class="title" for="outline">白邊粗細：<span id="outVal">6</span> px</label>
+      <input type="range" id="outline" min="0" max="16" value="6">
+      <div class="row" style="margin-top:6px">
+        <span style="flex:0 0 auto;font-size:13px">白邊顏色</span>
+        <input type="color" id="outlineColor" value="#ffffff" class="swatch">
+        <label class="inline" style="flex:0 0 auto"><input type="checkbox" id="shadow"> 淡陰影</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="title" for="sizeMode">貼圖尺寸</label>
+      <select id="sizeMode">
+        <option value="fit">依內容縮放（最大 370×320）</option>
+        <option value="fixed">固定畫布 370×320</option>
+      </select>
+      <div class="hint">四周保留 10px 留白，寬高自動調成偶數。</div>
+    </div>
+
+    <div class="field">
+      <label class="title" for="smooth">邊緣柔化</label>
+      <select id="smooth">
+        <option value="0">關閉</option>
+        <option value="1" selected>輕微</option>
+        <option value="2">較強</option>
+      </select>
+    </div>
+
+    <button class="primary block" id="exportBtn" disabled>下載貼圖 ZIP</button>
+    <div id="countNotice"></div>
+
+    <details style="margin-top:12px">
+      <summary>LINE 貼圖規格</summary>
+      <ul>
+        <li>貼圖：最大 370×320 px、PNG、透明背景、寬高偶數、每張 1MB 以下</li>
+        <li>數量：8 / 16 / 24 / 32 / 40 張</li>
+        <li>主要圖片 main.png：240×240 px</li>
+        <li>聊天室標籤 tab.png：96×74 px</li>
+        <li>檔名 01.png、02.png… 依順序排列</li>
+      </ul>
+    </details>
+  </aside>
+
+  <section class="panel">
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="選擇或拖入圖片">
+      <strong>拖曳圖片到這裡，或點擊選擇</strong>
+      支援 PNG / JPG / WebP，可一次多張；也可直接 Ctrl+V 貼上
+      <input type="file" id="file" accept="image/*" multiple hidden>
+    </div>
+
+    <div class="toolbar">
+      <button id="reprocessAll" disabled>以目前設定重新處理全部</button>
+      <button id="clearAll" disabled>清除全部</button>
+      <span class="status" id="status">尚未加入圖片</span>
+    </div>
+    <div class="bar"><div id="bar"></div></div>
+
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty">加入圖片後會在這裡預覽。點「設為主圖」選擇 main.png / tab.png 的來源（預設第一張）。</div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+  const STICKER_W = 370, STICKER_H = 320, MARGIN = 10;
+  const VALID_COUNTS = [8, 16, 24, 32, 40];
+  const MAX_SRC = 1600; // longest side used for processing
+
+  const $ = (id) => document.getElementById(id);
+  const ui = {
+    mode: $('mode'), modeHint: $('modeHint'), colorOpts: $('colorOpts'),
+    tolerance: $('tolerance'), tolVal: $('tolVal'), globalKey: $('globalKey'),
+    outline: $('outline'), outVal: $('outVal'), outlineColor: $('outlineColor'), shadow: $('shadow'),
+    sizeMode: $('sizeMode'), smooth: $('smooth'),
+    exportBtn: $('exportBtn'), countNotice: $('countNotice'),
+    drop: $('drop'), file: $('file'), grid: $('grid'), empty: $('empty'),
+    reprocessAll: $('reprocessAll'), clearAll: $('clearAll'), status: $('status'), bar: $('bar'),
+  };
+
+  /** @type {{id:number,name:string,src:HTMLCanvasElement,mode:string,cut:HTMLCanvasElement|null,out:HTMLCanvasElement|null,url:string|null,state:string,error:string|null,el:HTMLElement}[]} */
+  let items = [];
+  let mainId = null;
+  let nextId = 1;
+  let queue = Promise.resolve();
+  let pending = 0, done = 0;
+
+  // ---------- settings ----------
+  const MODE_HINTS = {
+    ai: '第一次使用會下載約 40MB 的模型（之後有快取），每張需數秒。',
+    color: '適合白底或單色背景的插圖，速度很快。',
+    none: '直接使用原圖的透明度，只做裁切、白邊與縮放。',
+  };
+  function settings() {
+    return {
+      tolerance: +ui.tolerance.value,
+      globalKey: ui.globalKey.checked,
+      outline: +ui.outline.value,
+      outlineColor: ui.outlineColor.value,
+      shadow: ui.shadow.checked,
+      sizeMode: ui.sizeMode.value,
+      smooth: +ui.smooth.value,
+    };
+  }
+  function syncSettingsUI() {
+    ui.tolVal.textContent = ui.tolerance.value;
+    ui.outVal.textContent = ui.outline.value;
+    ui.modeHint.textContent = MODE_HINTS[ui.mode.value];
+    ui.colorOpts.style.display = ui.mode.value === 'color' ? '' : 'none';
+  }
+  ui.mode.addEventListener('change', syncSettingsUI);
+  ui.tolerance.addEventListener('input', syncSettingsUI);
+  ui.outline.addEventListener('input', syncSettingsUI);
+  // Layout-only settings: re-render from the cached cut-out (cheap, no re-removal)
+  let relayoutTimer;
+  for (const el of [ui.outline, ui.outlineColor, ui.shadow, ui.sizeMode]) {
+    el.addEventListener('input', () => {
+      clearTimeout(relayoutTimer);
+      relayoutTimer = setTimeout(() => items.forEach(it => it.cut && finish(it)), 150);
+    });
+  }
+  syncSettingsUI();
+
+  // ---------- input ----------
+  ui.drop.addEventListener('click', () => ui.file.click());
+  ui.drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ui.file.click(); } });
+  ui.file.addEventListener('change', () => { addFiles(ui.file.files); ui.file.value = ''; });
+  ['dragenter', 'dragover'].forEach(t => ui.drop.addEventListener(t, (e) => { e.preventDefault(); ui.drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => ui.drop.addEventListener(t, (e) => { e.preventDefault(); ui.drop.classList.remove('over'); }));
+  ui.drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => { e.preventDefault(); if (e.target !== ui.drop && !ui.drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+  window.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+    if (files.length) addFiles(files);
+  });
+
+  async function addFiles(fileList) {
+    const files = [...fileList].filter(f => f.type.startsWith('image/'));
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    for (const f of files) {
+      if (items.length >= 40) { setStatus('LINE 貼圖最多 40 張，其餘已略過'); break; }
+      let src;
+      try { src = await loadToCanvas(f); }
+      catch { setStatus(`無法讀取：${f.name}`); continue; }
+      const it = { id: nextId++, name: f.name, src, mode: ui.mode.value, cut: null, out: null, url: null, state: 'queued', error: null, el: null };
+      items.push(it);
+      if (mainId == null) mainId = it.id;
+      it.el = buildCard(it);
+      ui.grid.appendChild(it.el);
+      enqueue(it);
+    }
+    refresh();
+  }
+
+  async function loadToCanvas(file) {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_SRC / Math.max(bmp.width, bmp.height));
+    const c = makeCanvas(Math.round(bmp.width * scale), Math.round(bmp.height * scale));
+    c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    return c;
+  }
+
+  // ---------- queue ----------
+  function enqueue(it) {
+    it.state = 'queued'; it.error = null; renderCard(it);
+    pending++; updateProgress();
+    queue = queue.then(() => processItem(it)).catch(() => {}).finally(() => { done++; updateProgress(); });
+  }
+  function updateProgress() {
+    if (done >= pending) { pending = done = 0; ui.bar.style.width = '0'; refresh(); return; }
+    ui.bar.style.width = (done / pending * 100) + '%';
+    setStatus(`處理中 ${done + 1} / ${pending}…`);
+  }
+
+  async function processItem(it) {
+    if (!items.includes(it)) return;
+    it.state = 'working'; renderCard(it);
+    try {
+      const s = settings();
+      let cut;
+      if (it.mode === 'ai') cut = await removeAI(it.src, (msg) => { it.state = msg; renderCard(it); });
+      else if (it.mode === 'color') cut = removeColor(it.src, s.tolerance, s.globalKey);
+      else cut = cloneCanvas(it.src);
+      if (s.smooth && it.mode !== 'none') smoothAlpha(cut, s.smooth);
+      it.cut = cut;
+      finish(it);
+    } catch (err) {
+      console.error(err);
+      it.state = 'error';
+      it.error = it.mode === 'ai'
+        ? 'AI 去背失敗（可能無法連線下載模型），可改用「背景色去除」'
+        : '處理失敗：' + (err?.message || err);
+      renderCard(it);
+    }
+  }
+
+  function finish(it) {
+    const s = settings();
+    const trimmed = trim(it.cut);
+    if (!trimmed) { it.state = 'error'; it.error = '去背後沒有剩下任何內容，請調低容許度或換方式'; it.out = null; renderCard(it); refresh(); return; }
+    const decorated = decorate(trimmed, s);
+    it.out = layoutSticker(decorated, s.sizeMode);
+    it.state = 'done'; it.error = null;
+    if (it.url) URL.revokeObjectURL(it.url);
+    it.url = null;
+    it.out.toBlob((b) => { if (!b) return; it.url = URL.createObjectURL(b); it.size = b.size; renderCard(it); refresh(); }, 'image/png');
+  }
+
+  // ---------- background removal ----------
+  let aiLib = null;
+  async function removeAI(canvas, onState) {
+    if (!aiLib) {
+      onState('載入 AI 模組…');
+      aiLib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm');
+    }
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    const out = await aiLib.removeBackground(blob, {
+      output: { format: 'image/png' },
+      progress: (key, cur, total) => {
+        if (key.startsWith('fetch') && total) onState(`下載模型 ${Math.round(cur / total * 100)}%`);
+        else if (key.startsWith('compute')) onState('AI 去背中…');
+      },
+    });
+    const bmp = await createImageBitmap(out);
+    const c = makeCanvas(bmp.width, bmp.height);
+    c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
+    return c;
+  }
+
+  // Colour-key removal: estimate background colour from the border, then flood-fill
+  // from every border pixel (or key out globally). Pixels near the threshold get
+  // partial alpha so anti-aliased edges don't keep a halo.
+  function removeColor(src, tol, global) {
+    const c = cloneCanvas(src);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const { width: w, height: h } = c;
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+    const bg = borderColor(d, w, h);
+    const hard = tol, soft = tol * 1.6;
+    const dist = (i) => {
+      const dr = d[i] - bg[0], dg = d[i + 1] - bg[1], db = d[i + 2] - bg[2];
+      return Math.sqrt(0.3 * dr * dr + 0.59 * dg * dg + 0.11 * db * db) * 1.4;
+    };
+    const alphaFor = (dd) => dd <= hard ? 0 : dd >= soft ? 1 : (dd - hard) / (soft - hard);
+
+    if (global) {
+      for (let p = 0; p < w * h; p++) {
+        const i = p * 4; if (d[i + 3] === 0) continue;
+        const a = alphaFor(dist(i));
+        if (a < 1) { d[i + 3] = Math.round(d[i + 3] * a); if (a > 0) unblend(d, i, bg, a); }
+      }
+    } else {
+      const seen = new Uint8Array(w * h);
+      const stack = [];
+      const push = (x, y) => { const p = y * w + x; if (!seen[p]) { seen[p] = 1; stack.push(p); } };
+      for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+      for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+      while (stack.length) {
+        const p = stack.pop(), i = p * 4;
+        const transparent = d[i + 3] < 8;
+        const dd = transparent ? 0 : dist(i);
+        if (dd >= soft) continue; // foreground: stop here
+        const a = alphaFor(dd);
+        if (!transparent) { d[i + 3] = Math.round(d[i + 3] * a); if (a > 0) unblend(d, i, bg, a); }
+        if (dd > hard) continue; // edge pixel: soften but don't spread further
+        const x = p % w, y = (p - x) / w;
+        if (x > 0) push(x - 1, y); if (x < w - 1) push(x + 1, y);
+        if (y > 0) push(x, y - 1); if (y < h - 1) push(x, y + 1);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  // Remove background colour contribution from a semi-transparent edge pixel.
+  function unblend(d, i, bg, a) {
+    for (let k = 0; k < 3; k++) d[i + k] = clamp((d[i + k] - bg[k] * (1 - a)) / a);
+  }
+  function borderColor(d, w, h) {
+    const rs = [], gs = [], bs = [];
+    const step = Math.max(1, Math.floor((w + h) / 400));
+    const add = (x, y) => { const i = (y * w + x) * 4; if (d[i + 3] > 200) { rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]); } };
+    for (let x = 0; x < w; x += step) { add(x, 0); add(x, h - 1); }
+    for (let y = 0; y < h; y += step) { add(0, y); add(w - 1, y); }
+    if (!rs.length) return [255, 255, 255];
+    const med = (a) => { a.sort((p, q) => p - q); return a[a.length >> 1]; };
+    return [med(rs), med(gs), med(bs)];
+  }
+
+  // Box-blur the alpha channel slightly, then re-sharpen, to clean jagged edges.
+  function smoothAlpha(c, strength) {
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const { width: w, height: h } = c;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data;
+    const a = new Float32Array(w * h);
+    for (let p = 0; p < w * h; p++) a[p] = d[p * 4 + 3];
+    const r = strength;
+    const tmp = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0, n = 0;
+      for (let k = -r; k <= r; k++) { const xx = x + k; if (xx >= 0 && xx < w) { s += a[y * w + xx]; n++; } }
+      tmp[y * w + x] = s / n;
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0, n = 0;
+      for (let k = -r; k <= r; k++) { const yy = y + k; if (yy >= 0 && yy < h) { s += tmp[yy * w + x]; n++; } }
+      const v = s / n;
+      // contrast curve keeps edges crisp while removing stair-steps
+      const t = Math.min(1, Math.max(0, (v / 255 - 0.5) * 2 + 0.5));
+      d[(y * w + x) * 4 + 3] = Math.round(t * 255);
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // ---------- layout ----------
+  function trim(c) {
+    const { width: w, height: h } = c;
+    const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return null;
+    const out = makeCanvas(x1 - x0 + 1, y1 - y0 + 1);
+    out.getContext('2d', { willReadFrequently: true }).drawImage(c, -x0, -y0);
+    return out;
+  }
+
+  // Scale content to its final size first, then add the outline so its thickness
+  // is the same on every sticker regardless of source resolution.
+  function decorate(trimmed, s) {
+    const pad = s.outline + (s.shadow ? 4 : 0);
+    const maxW = STICKER_W - MARGIN * 2 - pad * 2, maxH = STICKER_H - MARGIN * 2 - pad * 2;
+    const k = Math.min(maxW / trimmed.width, maxH / trimmed.height);
+    const cw = Math.max(1, Math.round(trimmed.width * k)), ch = Math.max(1, Math.round(trimmed.height * k));
+    const scaled = makeCanvas(cw, ch);
+    const sctx = scaled.getContext('2d', { willReadFrequently: true });
+    sctx.imageSmoothingQuality = 'high';
+    sctx.drawImage(trimmed, 0, 0, cw, ch);
+
+    const out = makeCanvas(cw + pad * 2, ch + pad * 2);
+    const ctx = out.getContext('2d', { willReadFrequently: true });
+    if (s.outline > 0) {
+      const sil = makeCanvas(cw, ch), sc = sil.getContext('2d', { willReadFrequently: true });
+      sc.drawImage(scaled, 0, 0);
+      sc.globalCompositeOperation = 'source-in';
+      sc.fillStyle = s.outlineColor; sc.fillRect(0, 0, cw, ch);
+      if (s.shadow) {
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
+        ctx.drawImage(sil, pad, pad); ctx.restore();
+      }
+      const r = s.outline;
+      const steps = Math.max(16, Math.ceil(2 * Math.PI * r));
+      for (let rr = r; rr > 0; rr -= Math.max(1, r / 3)) {
+        for (let i = 0; i < steps; i++) {
+          const t = (i / steps) * Math.PI * 2;
+          ctx.drawImage(sil, pad + Math.cos(t) * rr, pad + Math.sin(t) * rr);
+        }
+      }
+      ctx.drawImage(sil, pad, pad);
+    } else if (s.shadow) {
+      ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
+    }
+    ctx.drawImage(scaled, pad, pad);
+    return out;
+  }
+
+  function layoutSticker(content, sizeMode) {
+    let w, h;
+    if (sizeMode === 'fixed') { w = STICKER_W; h = STICKER_H; }
+    else { w = even(content.width + MARGIN * 2); h = even(content.height + MARGIN * 2); }
+    w = Math.min(w, STICKER_W); h = Math.min(h, STICKER_H);
+    const out = makeCanvas(w, h);
+    out.getContext('2d', { willReadFrequently: true }).drawImage(content, Math.round((w - content.width) / 2), Math.round((h - content.height) / 2));
+    return out;
+  }
+
+  function fitInto(src, w, h, margin) {
+    const out = makeCanvas(w, h);
+    const ctx = out.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingQuality = 'high';
+    const t = trim(src) || src;
+    const k = Math.min((w - margin * 2) / t.width, (h - margin * 2) / t.height);
+    const dw = Math.round(t.width * k), dh = Math.round(t.height * k);
+    ctx.drawImage(t, Math.round((w - dw) / 2), Math.round((h - dh) / 2), dw, dh);
+    return out;
+  }
+
+  // ---------- cards ----------
+  function buildCard(it) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="thumb"><span class="badge"></span><img alt=""><div class="state"></div></div>
+      <div class="meta">
+        <div class="name"></div>
+        <div class="info"></div>
+        <select data-act="mode" aria-label="此圖的去背方式">
+          <option value="ai">AI 去背</option><option value="color">背景色去除</option><option value="none">不去背</option>
+        </select>
+        <div class="actions">
+          <button data-act="left" title="往前移">◀</button>
+          <button data-act="right" title="往後移">▶</button>
+          <button data-act="main">設為主圖</button>
+          <button data-act="redo" title="以目前設定重新處理">重做</button>
+          <button data-act="del" title="移除">✕</button>
+        </div>
+      </div>`;
+    el.querySelector('.name').textContent = it.name;
+    el.querySelector('.name').title = it.name;
+    const sel = el.querySelector('select');
+    sel.value = it.mode;
+    sel.addEventListener('change', () => { it.mode = sel.value; enqueue(it); });
+    el.addEventListener('click', (e) => {
+      const act = e.target.closest('button')?.dataset.act;
+      if (!act) return;
+      const idx = items.indexOf(it);
+      if (act === 'del') {
+        items.splice(idx, 1); el.remove(); if (it.url) URL.revokeObjectURL(it.url);
+        if (mainId === it.id) mainId = items[0]?.id ?? null;
+      } else if (act === 'main') { mainId = it.id; }
+      else if (act === 'redo') { enqueue(it); return; }
+      else if (act === 'left' && idx > 0) { [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]]; ui.grid.insertBefore(el, items[idx].el); }
+      else if (act === 'right' && idx < items.length - 1) { [items[idx + 1], items[idx]] = [items[idx], items[idx + 1]]; ui.grid.insertBefore(items[idx].el, el); }
+      refresh();
+    });
+    return el;
+  }
+
+  function renderCard(it) {
+    const el = it.el; if (!el) return;
+    const img = el.querySelector('img'), state = el.querySelector('.state'), info = el.querySelector('.info');
+    if (it.url) img.src = it.url; else img.removeAttribute('src');
+    img.style.display = it.url ? '' : 'none';
+    const label = { queued: '等待中…', working: '處理中…', done: '', error: '' }[it.state] ?? it.state;
+    state.textContent = label;
+    state.style.display = label ? '' : 'none';
+    if (it.error) { info.className = 'info err'; info.textContent = it.error; }
+    else if (it.out) {
+      const kb = it.size ? ` · ${Math.round(it.size / 1024)}KB` : '';
+      info.className = 'info' + (it.size > 1024 * 1024 ? ' err' : '');
+      info.textContent = `${it.out.width}×${it.out.height}${kb}`;
+    } else { info.className = 'info'; info.textContent = ''; }
+    el.querySelector('select').value = it.mode;
+  }
+
+  function refresh() {
+    items.forEach((it, i) => {
+      it.el.querySelector('.badge').textContent = String(i + 1).padStart(2, '0');
+      it.el.classList.toggle('is-main', it.id === mainId);
+      it.el.querySelector('[data-act="main"]').textContent = it.id === mainId ? '★ 主圖' : '設為主圖';
+    });
+    const ready = items.filter(it => it.state === 'done' && it.out).length;
+    const busy = pending > 0;
+    ui.empty.style.display = items.length ? 'none' : '';
+    ui.reprocessAll.disabled = !items.length || busy;
+    ui.clearAll.disabled = !items.length;
+    ui.exportBtn.disabled = !ready || busy;
+    if (!busy) setStatus(items.length ? `共 ${items.length} 張，完成 ${ready} 張` : '尚未加入圖片');
+
+    const n = items.length;
+    let msg = '';
+    if (n && !VALID_COUNTS.includes(n)) {
+      const target = VALID_COUNTS.find(c => c >= n) ?? 40;
+      msg = `LINE 上架需 8 / 16 / 24 / 32 / 40 張，目前 ${n} 張（${target > n ? `還差 ${target - n} 張湊滿 ${target}` : ''}）。仍可先下載。`;
+    }
+    if (items.some(it => it.size > 1024 * 1024)) msg += ' 有圖片超過 1MB，請減少細節或改用「依內容縮放」。';
+    ui.countNotice.innerHTML = msg ? `<div class="notice warn"></div>` : '';
+    if (msg) ui.countNotice.firstChild.textContent = msg.trim();
+  }
+
+  function setStatus(t) { ui.status.textContent = t; }
+
+  ui.reprocessAll.addEventListener('click', () => {
+    items.forEach(it => { it.mode = ui.mode.value; enqueue(it); });
+  });
+  ui.clearAll.addEventListener('click', () => {
+    if (!confirm('確定清除全部圖片？')) return;
+    items.forEach(it => it.url && URL.revokeObjectURL(it.url));
+    items = []; mainId = null; ui.grid.innerHTML = ''; refresh();
+  });
+
+  // ---------- export ----------
+  ui.exportBtn.addEventListener('click', async () => {
+    const ready = items.filter(it => it.state === 'done' && it.out);
+    if (!ready.length) return;
+    ui.exportBtn.disabled = true;
+    setStatus('打包中…');
+    try {
+      const zip = new JSZip();
+      const toBlob = (c) => new Promise(r => c.toBlob(r, 'image/png'));
+      for (let i = 0; i < ready.length; i++) {
+        zip.file(String(i + 1).padStart(2, '0') + '.png', await toBlob(ready[i].out));
+      }
+      const main = ready.find(it => it.id === mainId) || ready[0];
+      zip.file('main.png', await toBlob(fitInto(main.out, 240, 240, 4)));
+      zip.file('tab.png', await toBlob(fitInto(main.out, 96, 74, 2)));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'line-stickers.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      setStatus(`已輸出 ${ready.length} 張貼圖 + main.png + tab.png`);
+    } catch (err) {
+      console.error(err);
+      setStatus('打包失敗：' + (err?.message || err));
+    } finally { refresh(); }
+  });
+
+  // ---------- utils ----------
+  function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  function cloneCanvas(src) { const c = makeCanvas(src.width, src.height); c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0); return c; }
+  function even(n) { n = Math.ceil(n); return n % 2 ? n + 1 : n; }
+  function clamp(v) { return v < 0 ? 0 : v > 255 ? 255 : Math.round(v); }
+
+  // expose for automated tests
+  window.__stickerApp = { get items() { return items; } };
+})();
+</script>
+</body>
+</html>
