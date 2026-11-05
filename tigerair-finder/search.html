@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>虎航低價機票搜尋</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1>虎航低價機票搜尋</h1>
+      <p class="sub">用台灣虎航官網的每日最低票價，找出符合你條件、最便宜的出發與回程日期。</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <form id="form" class="card" novalidate>
+      <div class="grid">
+        <fieldset class="field">
+          <legend>行程</legend>
+          <div class="seg" role="radiogroup" aria-label="行程">
+            <label><input type="radio" name="tripType" value="roundTrip" checked><span>來回</span></label>
+            <label><input type="radio" name="tripType" value="oneWay"><span>單程</span></label>
+          </div>
+        </fieldset>
+
+        <label class="field">
+          <span class="legend">出發地</span>
+          <select id="origin"></select>
+        </label>
+      </div>
+
+      <fieldset class="field">
+        <legend>目的地 <span id="destCount" class="count"></span></legend>
+        <p id="routeNote" class="hint"></p>
+        <div id="destGroups" class="dest-groups"></div>
+        <label class="extra">
+          <span>其他機場代碼</span>
+          <input id="extraCodes" placeholder="例如 SIN（用逗號或空白分隔）" autocomplete="off" spellcheck="false">
+        </label>
+      </fieldset>
+
+      <div class="grid">
+        <fieldset class="field">
+          <legend>可旅遊期間</legend>
+          <div class="range">
+            <input type="date" id="start" aria-label="最早出發日">
+            <span>～</span>
+            <input type="date" id="end" aria-label="最晚回程日">
+          </div>
+          <p id="periodHint" class="hint"></p>
+        </fieldset>
+
+        <fieldset class="field" id="daysField">
+          <legend>旅遊天數</legend>
+          <div class="range">
+            <input type="number" id="minDays" min="1" max="60" inputmode="numeric" aria-label="最少天數">
+            <span>～</span>
+            <input type="number" id="maxDays" min="1" max="60" inputmode="numeric" aria-label="最多天數">
+            <span>天</span>
+          </div>
+          <p class="hint">含出發和回程當天：5 天 = 5天4夜</p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>價錢（每人・TWD）</legend>
+          <div class="range">
+            <input id="minPrice" inputmode="numeric" placeholder="不限" aria-label="最低價">
+            <span>～</span>
+            <input id="maxPrice" inputmode="numeric" placeholder="不限" aria-label="最高價">
+          </div>
+          <p id="priceHint" class="hint"></p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>出發星期</legend>
+          <div id="weekdays" class="chips"></div>
+          <p class="hint"><button type="button" class="link" id="wkAll">全選</button>・<button type="button" class="link" id="wkWeekend">只看週四～週六出發</button></p>
+        </fieldset>
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="go" class="primary">搜尋最便宜機票</button>
+        <div id="errors" class="errors" role="alert"></div>
+      </div>
+    </form>
+
+    <section id="status" class="status" hidden aria-live="polite">
+      <div class="bar"><div id="barFill"></div></div>
+      <span id="statusText"></span>
+    </section>
+
+    <section id="results" class="results" hidden>
+      <div id="warnings"></div>
+      <div class="results-head">
+        <h2 id="summary"></h2>
+        <label class="sort" id="sortWrap">排序
+          <select id="sortBy">
+            <option value="price">價格低 → 高</option>
+            <option value="date">出發日期</option>
+          </select>
+        </label>
+      </div>
+      <div id="best" class="best"></div>
+      <div class="table-wrap" id="tableWrap">
+        <table id="table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button type="button" id="more" class="secondary" hidden>顯示更多</button>
+    </section>
+
+    <p class="foot">
+      價格是虎航官網低價日曆上的「每人、單程、當天最低票價」，可能未含稅金、行李與選位等費用，且隨時會變動；
+      實際金額以虎航訂票頁為準。本工具非台灣虎航官方產品。
+    </p>
+  </main>
+
+  <script type="module" src="search.js"></script>
+</body>
+</html>
