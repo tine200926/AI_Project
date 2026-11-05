@@ -218,6 +218,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (p.addReloads) run.reloads += p.addReloads;
         if (p.message) run.messages = [...(run.messages || []), String(p.message).slice(0, 120)].slice(-10);
         if (p.offset !== undefined) run.offset = p.offset;
+        if (p.offsetError !== undefined) run.offsetError = p.offsetError;
         if (p.status) run.status = p.status;
         await chrome.storage.local.set({ run });
         if (p.message) await addLog(`網站訊息：${p.message}`);

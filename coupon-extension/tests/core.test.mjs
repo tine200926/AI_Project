@@ -85,3 +85,12 @@ test('describeSchedule', () => {
   assert.equal(C.describeSchedule({ mode: 'daily', time: '10:00:00', days: [5, 1] }), '每週一、五 10:00:00');
   assert.equal(C.describeSchedule({ mode: 'once', date: '2026-11-11', time: '00:00:00' }), '2026-11-11 00:00:00');
 });
+
+test('status text and coupon tabs', () => {
+  assert.equal(C.isStatusText('已領取', D), true);
+  assert.equal(C.isStatusText('領取', D), true);
+  assert.equal(C.isStatusText('使用規則', D), false);
+  assert.deepEqual(C.couponViews(D), ['getAllCoupon']);
+  assert.deepEqual(C.couponViews(C.sanitizeSettings({ couponTabs: 'both' })), ['getAllCoupon', 'getSellerCoupon']);
+  assert.equal(C.sanitizeSettings({ couponTabs: 'nope' }).couponTabs, 'getAllCoupon');
+});

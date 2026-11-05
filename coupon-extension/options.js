@@ -2,7 +2,7 @@ const C = globalThis.CouponCore;
 const $ = (id) => document.getElementById(id);
 const NUM = ['leadSec', 'durationSec', 'clickIntervalMs', 'refreshIntervalMs', 'advanceMs'];
 const BOOL = ['refreshAtStart', 'timeSync', 'autoConfirm'];
-const TEXT = ['couponFilter', 'claimKeywords', 'excludeKeywords', 'customSelector'];
+const TEXT = ['couponFilter', 'claimKeywords', 'excludeKeywords', 'customSelector', 'couponTabs'];
 
 let schedules = [];
 let upcoming = {};

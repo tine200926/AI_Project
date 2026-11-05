@@ -18,7 +18,10 @@
     excludeKeywords: '已領取,已領完,已兌換,領取完畢,已結束,已使用,已過期,已失效,已額滿,即將開放,尚未開始,未開放',
     couponFilter: '',       // only coupons whose card text contains one of these
     customSelector: '',     // CSS selector for the claim button (overrides keywords)
+    couponTabs: 'getAllCoupon', // myship tabs to sweep: getAllCoupon | getSellerCoupon | both
   };
+
+  const ENUMS = { couponTabs: ['getAllCoupon', 'getSellerCoupon', 'both'] };
 
   const LIMITS = {
     leadSec: [5, 600],
@@ -40,6 +43,8 @@
         out[k] = Math.min(hi, Math.max(lo, Math.round(n)));
       } else if (typeof def === 'boolean') {
         out[k] = !!v;
+      } else if (ENUMS[k]) {
+        if (ENUMS[k].includes(v)) out[k] = v;
       } else {
         out[k] = String(v);
       }
@@ -63,6 +68,19 @@
     if (splitList(settings.excludeKeywords).some((k) => t.includes(norm(k)))) return false;
     if (!useKeywords) return true;
     return splitList(settings.claimKeywords).some((k) => t.includes(norm(k)));
+  }
+
+  // A short label that is either a claim button or one of the excluded
+  // states (已領取…) — i.e. the status button of some coupon card.
+  function isStatusText(text, settings) {
+    const t = norm(text);
+    if (!t || t.length > 20) return false;
+    return [...splitList(settings.claimKeywords), ...splitList(settings.excludeKeywords)].some((k) => t.includes(norm(k)));
+  }
+
+  function couponViews(settings) {
+    if (settings.couponTabs === 'both') return ['getAllCoupon', 'getSellerCoupon'];
+    return [settings.couponTabs === 'getSellerCoupon' ? 'getSellerCoupon' : 'getAllCoupon'];
   }
 
   function matchesFilter(cardText, settings) {
@@ -172,7 +190,7 @@
 
   const api = {
     PAGE_URL, DEFAULTS, LIMITS, WEEKDAYS,
-    sanitizeSettings, splitList, norm, isClaimText, matchesFilter,
+    sanitizeSettings, splitList, norm, isClaimText, isStatusText, couponViews, matchesFilter,
     parseTime, parseDate, nextRun, validateSchedule, estimateOffset,
     fmtDateTime, fmtCountdown, describeSchedule,
   };

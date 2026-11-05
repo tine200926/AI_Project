@@ -17,6 +17,9 @@ const { chromium } = require('playwright');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SKEW = 1500;
 const serverNow = () => Date.now() + SKEW;
+const { createMyship } = await import('./myship-mock.mjs');
+const myship = createMyship(serverNow);
+let mode = 'simple'; // 'simple' mock page, or 'myship' (realistic AJAX page)
 
 // ---------------------------------------------------------- mock site ----
 const site = {
@@ -61,6 +64,10 @@ async function handle(route) {
   const req = route.request();
   const url = new URL(req.url());
   const headers = { date: new Date(serverNow()).toUTCString(), 'cache-control': 'no-store' };
+  if (mode === 'myship') {
+    const done = await myship.handle(route, headers);
+    if (done !== null) return done;
+  }
   if (url.pathname === '/mem/GetCoupon') {
     if (req.method() === 'HEAD') return route.fulfill({ status: 200, headers, body: '' });
     if (site.loginRequired) {
@@ -178,6 +185,10 @@ await step('once schedule does not fire again; popup shows no next run', async (
 });
 
 const couponTab = () => context.pages().find((p) => p.url().includes('/mem/GetCoupon'));
+async function waitForTab() {
+  await waitFor(async () => couponTab(), 5000, 'coupon tab');
+  return couponTab();
+}
 
 await step('start now + coupon filter: only the matching coupon is claimed', async () => {
   await setStore({ settings: { leadSec: 6, durationSec: 12, refreshIntervalMs: 1000, clickIntervalMs: 300, couponFilter: '免運' } });
@@ -223,6 +234,63 @@ await step('login redirect is reported', async () => {
   await opts.evaluate(() => chrome.runtime.sendMessage({ type: 'startNow', delayMs: 3000 }));
   await waitFor(async () => !(await store('run')).run, 8000, 'run to finish');
   assert.match(await lastLog(), /需要先登入/);
+});
+
+
+// ------------------------------------------- realistic myship page ----
+await step('myship page: AJAX list, pagination, both tabs, WaitAndReload, dialogs', async () => {
+  mode = 'myship';
+  await setStore({ schedules: [], settings: { leadSec: 6, durationSec: 25, refreshIntervalMs: 1000, clickIntervalMs: 300, couponTabs: 'both' } });
+  for (const p of context.pages()) if (p.url().includes('/mem/GetCoupon')) await p.close();
+  const target = Math.ceil((serverNow() + 9000) / 1000) * 1000;
+  myship.reset(target);
+  const d = new Date(target);
+  await setStore({ schedules: [{ id: 'm1', name: '雙11', mode: 'once', enabled: true,
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` }] });
+  await waitFor(async () => (await store('run')).run, 9000, 'run to start');
+  const tab = await waitForTab();
+  const loadsBefore = myship.st.listRequests.length;
+  await waitFor(async () => !(await store('run')).run, 40000, 'run to finish');
+  const st = myship.st;
+  const log = (await store('log')).log.map((e) => e.msg).join('\n');
+  const info = JSON.stringify({ claimed: Object.keys(st.claimed), early: st.early, reqs: st.listRequests.map((r) => `${r.view[3]}${r.pgidx}/${r.pgsize}@${r.at - target}`) }) + '\n' + log.slice(0, 1500);
+  assert.deepEqual(Object.keys(st.claimed).sort(), ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'S1'], info);
+  assert.equal(st.early, 0, info);
+  // The list was reloaded over AJAX (24 per page), not by reloading the page.
+  assert.ok(st.listRequests.some((r) => r.pgsize === 24 && Math.abs(r.at - target) < 400), info);
+  assert.ok(st.listRequests.some((r) => r.pgidx === 2), 'visited page 2: ' + info);
+  assert.ok(st.listRequests.some((r) => r.view === 'getSellerCoupon'), 'visited seller tab: ' + info);
+  assert.ok(st.listRequests.length > loadsBefore);
+  const first = Math.min(...Object.values(st.claimed)) - target;
+  assert.ok(first >= 0 && first < 1000, `first claim ${first} ms after open; ${info}`);
+  assert.equal(await tab.evaluate(() => window.__crumb || 0), 0, 'breadcrumb link must not be clicked');
+  assert.match(log, /優惠券領取完成/);
+  assert.match(log, /領取成功/);
+  assert.match(log, /人數眾多/);
+  // Dialogs were dismissed.
+  assert.equal(await tab.locator('.alertify').count(), 0);
+  assert.equal(await tab.$eval('#getTicketDialog', (e) => getComputedStyle(e).display), 'none');
+});
+
+await step('myship page: coupon filter claims only the matching card', async () => {
+  await setStore({ schedules: [], settings: { leadSec: 6, durationSec: 15, refreshIntervalMs: 1000, clickIntervalMs: 300, couponTabs: 'getAllCoupon', couponFilter: '折35元' } });
+  myship.reset(0);
+  await opts.evaluate(() => chrome.runtime.sendMessage({ type: 'startNow', delayMs: 3000 }));
+  await waitFor(async () => !(await store('run')).run, 25000, 'run to finish');
+  assert.deepEqual(Object.keys(myship.st.claimed), ['A1'], JSON.stringify(myship.st));
+  assert.match(await lastLog(), /領取完成/);
+});
+
+await step('myship page: no coupons open -> list refreshed, then nobutton', async () => {
+  await setStore({ settings: { leadSec: 6, durationSec: 6, refreshIntervalMs: 1000, couponTabs: 'getAllCoupon' } });
+  myship.reset(Infinity);
+  const before = myship.st.listRequests.length;
+  await opts.evaluate(() => chrome.runtime.sendMessage({ type: 'startNow', delayMs: 3000 }));
+  await waitFor(async () => !(await store('run')).run, 25000, 'run to finish');
+  assert.ok(myship.st.listRequests.length - before >= 4, `list requests ${myship.st.listRequests.length - before}`);
+  assert.match(await lastLog(), /沒有找到領取按鈕/);
+  mode = 'simple';
 });
 
 await step('daily schedule reschedules for tomorrow', async () => {

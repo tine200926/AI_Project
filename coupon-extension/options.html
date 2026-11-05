@@ -47,9 +47,12 @@
       <label class="field"><span>同一顆按鈕重按間隔（毫秒）</span><input id="clickIntervalMs" type="number" min="100" max="10000" step="50"></label>
       <label class="field"><span>找不到按鈕時重新整理間隔（毫秒）</span><input id="refreshIntervalMs" type="number" min="500" max="60000" step="100"></label>
       <label class="field"><span>提早幾毫秒動作（抵銷網路延遲）</span><input id="advanceMs" type="number" min="0" max="5000" step="50"></label>
+      <label class="field"><span>要領哪個分頁的券</span>
+        <select id="couponTabs"><option value="getAllCoupon">全站</option><option value="getSellerCoupon">合作商家</option><option value="both">全站＋合作商家</option></select>
+      </label>
     </div>
     <div style="margin-top:12px; display:grid; gap:6px">
-      <label class="check"><input id="refreshAtStart" type="checkbox"><span>到點時重新整理頁面<br><span class="small muted">優惠券多半要重新整理才會出現可領取的按鈕。</span></span></label>
+      <label class="check"><input id="refreshAtStart" type="checkbox"><span>到點時重新載入優惠券列表<br><span class="small muted">優惠券多半要重新載入才會出現可領取的按鈕。賣貨便頁面只重新載入列表（不整頁重新整理），比較快。</span></span></label>
       <label class="check"><input id="timeSync" type="checkbox"><span>用網站時間校正<br><span class="small muted">讀網站回應的時間，修正電腦時鐘的誤差。</span></span></label>
       <label class="check"><input id="autoConfirm" type="checkbox"><span>自動按「確定」<br><span class="small muted">領取時跳出的確認視窗、提示視窗自動按確定，訊息會記在下面的紀錄。</span></span></label>
     </div>
