@@ -348,7 +348,12 @@ class Order:
                     reason = x.unavailable_reason()
                     print(f"  + {x.option_name} x{x.qty}" + (f"  （目前{reason}）" if reason else ""))
             except ValueError as e:
-                print(f"  ! 第 {n} 項略過: {e}")
+                if allow_pending and p.status != "SALE" and specs and specs != ["*"]:
+                    # 開賣前選項常常還沒放完整（例如只有 1 個預留選項），開賣後再對一次
+                    print(f"  ! 目前對不到選項（{e}），開賣後會自動重試")
+                    self.pending.append((n, p, specs))
+                else:
+                    print(f"  ! 第 {n} 項略過: {e}")
 
     def retry_pending(self):
         still = []
@@ -360,7 +365,10 @@ class Order:
             except (RuntimeError, OSError):
                 still.append((n, p, specs))
             except ValueError as e:
-                print(f"\n  ! 第 {n} 項放棄: {e}")
+                if p.status != "SALE":
+                    still.append((n, p, specs))   # 還沒開賣，選項可能還沒上架
+                else:
+                    print(f"\n  ! 第 {n} 項放棄: {e}")
         self.pending = still
 
     def refresh_all(self):
@@ -511,6 +519,12 @@ def main():
         print(f"刷新間隔過短，改為 {MIN_REFRESH:g} 秒")
         args.refresh = MIN_REFRESH
 
+    if args.at:
+        now = dt.datetime.now()
+        print(f"開搶時間: {args.at:%Y-%m-%d %H:%M:%S}   本機目前時間: {now:%Y-%m-%d %H:%M:%S}")
+        if args.at <= now:
+            print("  ! 開搶時間已經過了（請檢查 開搶.bat 的 AT 日期，或電腦時鐘），將不倒數、直接開始。")
+
     entries = load_from_file(args.file) if args.file else interactive_entries()
     if not entries:
         print("沒有商品。")
@@ -522,7 +536,7 @@ def main():
     order = Order()
     order.resolve(entries, allow_pending=bool(args.at or args.refresh))
     if not order.picks and not order.pending:
-        print("\n沒有可結帳的商品。")
+        print("\n沒有可結帳的商品，所以沒有開始倒數。請檢查上面每一項的錯誤訊息（可先跑 list.bat 確認選項）。")
         return 1
 
     if args.at:
